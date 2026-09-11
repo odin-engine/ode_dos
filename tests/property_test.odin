@@ -27,7 +27,7 @@ package ode_dos__tests
         mass: dos.Property(Prop_Mass)
         max_hp: dos.Property(Prop_Max_HP)
         vision: dos.Property(Prop_Vision)
-        testing.expect(t, dos.property_init(&w, &mass, "mass") == nil)
+        testing.expect(t, dos.property_init(&w, &mass, "mass", overridable = true) == nil)
         testing.expect(t, dos.property_init(&w, &max_hp, "max-hit-points") == nil)
         testing.expect(t, dos.property_init(&w, &vision, "vision-range") == nil)
 
@@ -94,7 +94,7 @@ package ode_dos__tests
         defer dos.world_terminate(&w)
 
         mass, other: dos.Property(Prop_Mass)
-        testing.expect(t, dos.property_init(&w, &mass, "mass") == nil)
+        testing.expect(t, dos.property_init(&w, &mass, "mass", overridable = true) == nil)
         testing.expect(t, dos.property_init(&w, &other, "mass") == dos.DOS_Error.Name_Already_Exists)
 
         wooden, _ := dos.meta(&w, "Wooden")
@@ -193,8 +193,13 @@ package ode_dos__tests
 
         obj, _ := dos.spawn(&w, "Guard")
         testing.expect_value(t, dos.resolve(&label, obj).text, "guard")
-        testing.expect(t, dos.override(&label, obj, Prop_Name{ "x" }) == dos.DOS_Error.Type_Not_POD)
+        testing.expect(t, dos.override(&label, obj, Prop_Name{ "x" }) == dos.DOS_Error.Not_Overridable)
+        testing.expect(t, dos.clear_override(&label, obj) == dos.DOS_Error.Not_Overridable)
         testing.expect(t, dos.local(&label, obj) == nil)
+
+        // overrides are saved with the game, so they need plain data
+        named: dos.Property(Prop_Name)
+        testing.expect(t, dos.property_init(&w, &named, "named", overridable = true) == dos.DOS_Error.Type_Not_POD)
 
         // runtime tables are always saved, so they must be plain data
         state: dos.State(Prop_Name)

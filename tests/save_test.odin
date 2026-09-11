@@ -39,7 +39,7 @@ package ode_dos__tests
         testing.expect(t, dos.state_init(&g.w, &g.health, "health") == nil)
         testing.expect(t, dos.state_flags_init(&g.w, &g.status, "status") == nil)
         testing.expect(t, dos.link_init(&g.w, &g.contains, "Contains") == nil)
-        testing.expect(t, dos.property_init(&g.w, &g.mass, "mass") == nil)
+        testing.expect(t, dos.property_init(&g.w, &g.mass, "mass", overridable = true) == nil)
         testing.expect(t, dos.effect_register(&g.w, "Burning", dos.Effect{}) == nil)
 
         guard, _ := dos.archetype(&g.w, "Guard")

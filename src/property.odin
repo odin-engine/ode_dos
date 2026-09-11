@@ -13,13 +13,18 @@ package ode_dos
 // Property
 
     Property :: struct($T: typeid) {
-        world:      ^World,
-        set:        config_set_id,
-        authored:   ecs.Table(T),             // authored on archetypes, metas and surfaces
-        baked:      ecs.Table(T),             // effective value per archetype and surface
-        baked_from: ecs.Table(ecs.entity_id), // where each baked value came from
-        override:   ecs.Compact_Table(T),     // per-object overrides, runtime
-        can_override: bool,                   // T is plain data, so overrides can be saved
+        world:       ^World,
+        set:         config_set_id,
+        authored:    ecs.Table(T),         // authored on archetypes, metas and surfaces
+        baked:       ecs.Table(Baked(T)),  // effective value per archetype and surface, with its source
+        override:    ecs.Compact_Table(T), // per-object overrides, runtime; only when overridable
+        overridable: bool,
+    }
+
+    @(private)
+    Baked :: struct($T: typeid) {
+        value: T,
+        from:  ecs.entity_id, // the archetype, surface or meta the value came from
     }
 
     Source_Kind :: enum u8 {
@@ -35,22 +40,20 @@ package ode_dos
         id:   ecs.entity_id, // the object for Override, else the archetype, surface or meta
     }
 
-    // overrides_cap (objects with an override) defaults to min(max_objects, 4096).
-    property__init :: proc(w: ^World, self: ^Property($T), name: string, set := CORE, overrides_cap := 0, decode: Decode_Proc = nil) -> Error {
+    // overridable allows per-object overrides (T must be plain data); overrides_cap defaults to min(max_objects, 4096).
+    property__init :: proc(w: ^World, self: ^Property($T), name: string, set := CORE, overridable := false, overrides_cap := 0, decode: Decode_Proc = nil) -> Error {
         when VALIDATIONS do assert(world__is_valid(w) && self != nil)
 
         if !world__set_is_loaded(w, set) do return DOS_Error.Config_Set_Not_Found
         if world__binding_exists(w, name) do return DOS_Error.Name_Already_Exists
+        if overridable && !type_is_pod(type_info_of(T)) do return DOS_Error.Type_Not_POD // overrides are saved with the game
 
         db := &w.sets[set].db
-        cap := w.cfg.max_archetypes
-        ecs_err(ecs.table_init(&self.authored, db, cap)) or_return
-        ecs_err(ecs.table_init(&self.baked, db, cap)) or_return
-        ecs_err(ecs.table_init(&self.baked_from, db, cap)) or_return
+        ecs_err(ecs.table_init(&self.authored, db, w.cfg.max_archetypes)) or_return
+        ecs_err(ecs.table_init(&self.baked, db, w.cfg.max_archetypes)) or_return
 
-        // overrides live in the saved runtime database, so only plain data can have them
-        self.can_override = type_is_pod(type_info_of(T))
-        if self.can_override {
+        self.overridable = overridable
+        if overridable {
             ocap := overrides_cap > 0 ? overrides_cap : 4096
             ecs_err(ecs.compact_table_init(&self.override, &w.runtime_db, min(ocap, w.cfg.max_objects))) or_return
         }
@@ -77,7 +80,7 @@ package ode_dos
             return v, {}, src, v != nil
         }
         world__add_binding(w, name, .Property, set, type_info_of(T), self, apply, decode, read) or_return
-        world__find_binding(w, name).overridable = self.can_override
+        world__find_binding(w, name).overridable = overridable
         return nil
     }
 
@@ -111,53 +114,51 @@ package ode_dos
     // The override, else the baked archetype value; nil before bake or when nothing is authored.
     property__resolve_object :: proc(self: ^Property($T), obj: object_id) -> ^T {
         eid := ecs.entity_id(obj)
-        if self.can_override {
+        if self.overridable {
             if o := ecs.get_component(&self.override, eid); o != nil do return o
         }
 
         a := ecs.get_component(&self.world.archetype_table, eid)
         if a == nil do return nil
-        return ecs.get_component(&self.baked, ecs.entity_id(a^))
+        return property__baked_value(self, ecs.entity_id(a^))
     }
 
     property__resolve_archetype :: proc(self: ^Property($T), holder: archetype_id) -> ^T {
-        return ecs.get_component(&self.baked, ecs.entity_id(holder))
+        return property__baked_value(self, ecs.entity_id(holder))
     }
 
     property__resolve_surface :: proc(self: ^Property($T), holder: surface_id) -> ^T {
-        return ecs.get_component(&self.baked, ecs.entity_id(holder))
+        return property__baked_value(self, ecs.entity_id(holder))
     }
 
     property__resolve_with_source :: proc(self: ^Property($T), obj: object_id) -> (^T, Value_Source) {
         eid := ecs.entity_id(obj)
-        if self.can_override {
+        if self.overridable {
             if o := ecs.get_component(&self.override, eid); o != nil do return o, Value_Source{ kind = .Override, id = eid }
         }
 
         a := ecs.get_component(&self.world.archetype_table, eid)
         if a == nil do return nil, {}
 
-        holder := ecs.entity_id(a^)
-        v := ecs.get_component(&self.baked, holder)
-        if v == nil do return nil, {}
+        row := ecs.get_component(&self.baked, ecs.entity_id(a^))
+        if row == nil do return nil, {}
 
-        from := ecs.get_component(&self.baked_from, holder)^
-        kind := self.world.config_kind[from.ix] == .Meta ? Source_Kind.Meta : Source_Kind.Authored
-        return v, Value_Source{ kind = kind, id = from }
+        kind := self.world.config_kind[row.from.ix] == .Meta ? Source_Kind.Meta : Source_Kind.Authored
+        return &row.value, Value_Source{ kind = kind, id = row.from }
     }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Overrides
 
-    // The object's own override; nil when none.
+    // The object's own override; nil when none or when the property is not overridable.
     property__local :: proc(self: ^Property($T), obj: object_id) -> ^T {
-        if !self.can_override do return nil
+        if !self.overridable do return nil
         return ecs.get_component(&self.override, ecs.entity_id(obj))
     }
 
-    // Type_Not_POD when T holds strings or pointers.
+    // Not_Overridable unless the property was declared with overridable = true.
     property__override :: proc(self: ^Property($T), obj: object_id, value: T) -> Error {
-        if !self.can_override do return DOS_Error.Type_Not_POD
+        if !self.overridable do return DOS_Error.Not_Overridable
         c, err := ecs.add_component(&self.override, ecs.entity_id(obj))
         if c == nil do return ecs_err(err)
         c^ = value
@@ -165,7 +166,7 @@ package ode_dos
     }
 
     property__clear_override :: proc(self: ^Property($T), obj: object_id) -> Error {
-        if !self.can_override do return DOS_Error.Type_Not_POD
+        if !self.overridable do return DOS_Error.Not_Overridable
         return ecs_err(ecs.remove_component(&self.override, ecs.entity_id(obj)))
     }
 
@@ -183,9 +184,14 @@ package ode_dos
     }
 
     @(private)
+    property__baked_value :: #force_inline proc(self: ^Property($T), holder: ecs.entity_id) -> ^T {
+        row := ecs.get_component(&self.baked, holder)
+        return row != nil ? &row.value : nil
+    }
+
+    @(private)
     property__bake :: proc(w: ^World, self: ^Property($T)) -> Error {
         ecs.clear(&self.baked)
-        ecs.clear(&self.baked_from)
 
         for kind, ix in w.config_kind {
             if kind != .Archetype && kind != .Surface do continue
@@ -196,13 +202,9 @@ package ode_dos
                 v := ecs.get_component(&self.authored, src)
                 if v == nil do continue
 
-                b, berr := ecs.add_component(&self.baked, holder)
-                if b == nil do return ecs_err(berr)
-                b^ = v^
-
-                f, ferr := ecs.add_component(&self.baked_from, holder)
-                if f == nil do return ecs_err(ferr)
-                f^ = src
+                row, err := ecs.add_component(&self.baked, holder)
+                if row == nil do return ecs_err(err)
+                row^ = Baked(T){ value = v^, from = src }
                 break
             }
         }

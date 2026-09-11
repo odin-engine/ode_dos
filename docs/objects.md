@@ -26,7 +26,7 @@ dos.on_spawn(&w, proc(w: ^dos.World, obj: dos.object_id) {
 
 Odin has no closures, so hooks reach your tables through `World_Config.user_data`. Up to `MAX_SPAWN_HOOKS` (32) hooks can be registered.
 
-For objects declared in KDL, `load` bakes first, applies the object's config overrides, runs the hooks, and then applies the state values from the file, so a hook sees the override and the file has the last word.
+For objects declared in KDL, `load` bakes first, applies the object's property overrides, runs the hooks, and then applies the state values from the file, so a hook sees the override and the file has the last word.
 
 ## Names
 

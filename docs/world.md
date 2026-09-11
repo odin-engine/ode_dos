@@ -65,6 +65,6 @@ Names are dotted (`core.Guard`, `bafford.Guard01`); the namespace is purely lexi
 Error :: union #shared_nil { DOS_Error, ecs.API_Error, oc.Core_Error, oc.Error, runtime.Allocator_Error }
 ```
 
-`DOS_Error` is `Invalid_Name`, `Name_Already_Exists`, `Name_Not_Found`, `Wrong_Kind`, `Parent_Not_Allowed`, `Config_Set_Not_Found`, `Cannot_Unload_Core`, `Load_Failed` or `Type_Not_POD`. ODE_ECS errors pass through unchanged.
+`DOS_Error` is `Invalid_Name`, `Name_Already_Exists`, `Name_Not_Found`, `Wrong_Kind`, `Parent_Not_Allowed`, `Config_Set_Not_Found`, `Cannot_Unload_Core`, `Load_Failed`, `Type_Not_POD` or `Not_Overridable`. ODE_ECS errors pass through unchanged.
 
 The runtime database is ODE_ECS's own: `dos.runtime(&w)` returns it for views, groups and command buffers.

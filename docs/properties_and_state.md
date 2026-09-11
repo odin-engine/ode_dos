@@ -4,7 +4,7 @@ Configuration and runtime state are different types, so they cannot be confused.
 
 | | lives in | inherited | per object |
 |---|---|---|---|
-| `Property(T)` | the config set | yes, baked | overrides only |
+| `Property(T)` | the config set | yes, baked | overrides, when declared overridable |
 | `Flag` | the config set | yes, baked | no |
 | `State(T)` | the runtime database | no | yes |
 | `State_Flags(E)` | the runtime database | no | yes |
@@ -36,17 +36,21 @@ v, src := dos.resolve_with_source(&masses, obj)
 dos.source_name(&w, src)              // "override", "core.Human", "core.Alert", ...
 ```
 
-`resolve` on an object is at most three O(1) lookups: the override, the object's archetype and the baked value. Under the hood a `Property(T)` holds three ODE_ECS tables in its config set (authored, baked, and where each baked value came from) and one `Compact_Table(T)` of overrides in the runtime database.
+`resolve` on an object is at most three O(1) lookups: the override, the object's archetype and the baked value. Under the hood a `Property(T)` holds two ODE_ECS tables in its config set: what was authored, and each archetype's and surface's baked value together with where it came from. An overridable property adds one `Compact_Table(T)` of overrides in the runtime database.
 
-Per-object overrides:
+Per-object overrides are opt-in, since most properties never need them:
 
 ```odin
+dos.property_init(&w, &masses, "mass", overridable = true) or_return
+
 dos.override(&masses, obj, Mass{ 95 })
 dos.local(&masses, obj)          // ^Mass, the override only
 dos.clear_override(&masses, obj)
 ```
 
-`property_init` takes `set` (default `CORE`), `overrides_cap` (objects with an override, default 4,096) and an optional KDL `decode` proc.
+Without `overridable = true`, `override` and `clear_override` return `DOS_Error.Not_Overridable`, `local` returns nil, and an override written in KDL is a load error.
+
+`property_init` takes `set` (default `CORE`), `overridable` (default `false`), `overrides_cap` (objects with an override, default 4,096) and an optional KDL `decode` proc.
 
 ## Flag
 
@@ -98,7 +102,7 @@ Write enum values in full (`Status.Dead`): Odin cannot infer the enum of `.Dead`
 
 ## Plain data
 
-The runtime database is what `save_game` writes, so everything kept there must be plain data: no strings, pointers, slices or maps. `state_init` and `link_init` return `DOS_Error.Type_Not_POD` for such types. A `Property(T)` may hold strings, but then objects cannot override it: `override` returns `Type_Not_POD`, and so does an override written in KDL.
+The runtime database is what `save_game` writes, so everything kept there must be plain data: no strings, pointers, slices or maps. `state_init` and `link_init` return `DOS_Error.Type_Not_POD` for such types. A `Property(T)` may hold strings, but then it cannot be overridable: `property_init(..., overridable = true)` returns `Type_Not_POD`.
 
 ## Gameplay
 
