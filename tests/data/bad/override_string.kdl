@@ -1,0 +1,7 @@
+archetype "A" {
+    footstep-sound "wood"
+}
+
+object "O" archetype="A" {
+    footstep-sound "stone"
+}

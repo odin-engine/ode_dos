@@ -1,0 +1,2 @@
+archetype "Human"
+archetype "EliteGuard" parent="Humn"

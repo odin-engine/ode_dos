@@ -1,0 +1,2 @@
+archetype "A" parent="B"
+archetype "B" parent="A"

@@ -1,0 +1,251 @@
+// VS Code Tasks configuration file
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+    },
+    "problemMatcher": {
+        "owner": "odin",
+        "source": "Odin",
+        "fileLocation": "absolute",
+        "pattern": {
+            "regexp": "^(.*?)(\\((\\d+):(\\d+)\\))\\s+(Syntax\\s+)?(Error|Warning):\\s+(.+)$",
+            "file": 1,
+            "line": 3,
+            "column": 4,
+            "severity": 6,
+            "message": 7
+        }
+    },
+    "tasks": [
+        {
+            "label": "DOS Tests",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "test",
+                "${workspaceFolder}\\tests\\",
+                "-debug",
+                "-o:none",
+                "-out:${workspaceFolder}\\tests\\out\\tests.exe",
+                "-define:ODIN_TEST_THREADS=1",
+                "-define:ODIN_TEST_RANDOM_SEED=1",
+                "-define:ODIN_TEST_LOG_LEVEL=warning",
+                "-define:ODIN_TEST_FANCY=false",
+                "-define:ODIN_TEST_CLIPBOARD=false",
+                "-define:ODIN_TEST_PROGRESS_WIDTH=0",
+                "-define:ODIN_TEST_SHORT_LOGS=true"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\tests\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
+            "label": "DOS Tests No Validations",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "test",
+                "${workspaceFolder}\\tests\\",
+                "-debug",
+                "-o:none",
+                "-out:${workspaceFolder}\\tests\\out\\tests.exe",
+                "-define:DOS_VALIDATIONS=false",
+                "-define:ODIN_TEST_THREADS=1",
+                "-define:ODIN_TEST_RANDOM_SEED=1",
+                "-define:ODIN_TEST_LOG_LEVEL=warning",
+                "-define:ODIN_TEST_FANCY=false",
+                "-define:ODIN_TEST_CLIPBOARD=false",
+                "-define:ODIN_TEST_PROGRESS_WIDTH=0",
+                "-define:ODIN_TEST_SHORT_LOGS=true"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\tests\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
+            "label": "DOS Vet",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "check",
+                "${workspaceFolder}\\src\\",
+                "-vet",
+                "-vet-packages:ode_dos",
+                "-no-entry-point"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\src\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
+            "label": "Thief Demo",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "detail": "",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "run",
+                "${workspaceFolder}\\samples\\thief_demo",
+                "-debug",
+                "-out:${workspaceFolder}\\samples\\thief_demo\\out\\thief_demo.exe"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\samples\\thief_demo\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
+            "label": "Dos Tool Build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "detail": "",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "build",
+                "${workspaceFolder}\\samples\\dos_tool",
+                "-debug",
+                "-out:${workspaceFolder}\\samples\\dos_tool\\out\\dos_tool.exe"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\samples\\dos_tool\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
+            "label": "Dos Tool - Inspect Guard01",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "detail": "",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "run",
+                "${workspaceFolder}\\samples\\dos_tool",
+                "-debug",
+                "-out:${workspaceFolder}\\samples\\dos_tool\\out\\dos_tool.exe",
+                "--",
+                "../thief_game/data",
+                "inspect",
+                "Guard01"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\samples\\dos_tool\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
+            "label": "Dos Tool - Validate Data",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "detail": "",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "run",
+                "${workspaceFolder}\\samples\\dos_tool",
+                "-debug",
+                "-out:${workspaceFolder}\\samples\\dos_tool\\out\\dos_tool.exe",
+                "--",
+                "../thief_game/data",
+                "validate",
+                "../thief_game/data"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\samples\\dos_tool\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        }
+    ]
+}
