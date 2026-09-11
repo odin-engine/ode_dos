@@ -1,11 +1,13 @@
 ![ODE_DOS banner](img/banner.png)
-# 🗡️ ODE_DOS
+# 🗡️ ODE_DOS (ALPHA)
 
 A Thief-style **Dark Object System** for Odin: prototype inheritance, mixins (metas), a typed link graph and data-driven authoring in [KDL](https://kdl.dev), built on [ODE_ECS](https://github.com/odin-engine/ode_ecs) and [ODE_KDL](https://github.com/odin-engine/ode_kdl).
 
 ODE_DOS is based on Marc "MAHK" LeBlanc's GDC talk ["Game Entities in Thief: The Dark Project"](https://www.youtube.com/watch?v=5di7jmHKAQs).
 
 ODE_DOS answers *"what is this thing?"*; ODE_ECS answers *"what do all these things do this frame?"*. Inheritance is flattened once by `bake`, so gameplay reads configuration with O(1) lookups and iterates runtime state with plain ODE_ECS views or groups.
+
+>NOTE: The project is in alpha. Everything has been tested and is working, but it will be polished over the coming months.
 
 ## Features
 - The game world has two spaces: config (archetypes, metas, surfaces) and runtime (objects).
