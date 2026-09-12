@@ -1,0 +1,5 @@
+namespace "core"
+
+archetype "Archer" parent="Human" {
+    meta "Alert"
+}

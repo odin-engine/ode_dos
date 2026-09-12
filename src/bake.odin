@@ -27,13 +27,14 @@ package ode_dos
     @(private)
     Baker :: struct {
         bake: proc(w: ^World, data: rawptr) -> Error,
+        grow: proc(data: rawptr, cap: int) -> Error, // the baker's config tables
         data: rawptr,
         set:  config_set_id,
     }
 
     @(private)
-    world__add_baker :: proc(self: ^World, bake: proc(w: ^World, data: rawptr) -> Error, data: rawptr, set: config_set_id) -> Error {
-        _, err := append(&self.bakers, Baker{ bake = bake, data = data, set = set })
+    world__add_baker :: proc(self: ^World, bake: proc(w: ^World, data: rawptr) -> Error, grow: proc(data: rawptr, cap: int) -> Error, data: rawptr, set: config_set_id) -> Error {
+        _, err := append(&self.bakers, Baker{ bake = bake, grow = grow, data = data, set = set })
         return err
     }
 

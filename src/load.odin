@@ -547,7 +547,7 @@ package ode_dos
 
     @(private)
     loader__check_cycles :: proc(ld: ^Loader) {
-        limit := len(ld.decls) + ld.world.cfg.max_archetypes + 1
+        limit := len(ld.decls) + ld.world.config_cap + 1
         for d, i in ld.decls {
             if !d.has_parent do continue
             cur := d.parent
@@ -570,6 +570,9 @@ package ode_dos
     loader__commit :: proc(ld: ^Loader) -> Error {
         w := ld.world
         core := world__core_db(w)
+
+        entities, attachments := loader__measure(ld)
+        world__grow_config(w, entities, attachments) or_return
 
         // entities; reloaded ones start over
         for &d in ld.decls {
@@ -614,6 +617,37 @@ package ode_dos
         }
 
         return nil
+    }
+
+    // Config entities and attachments after this load; new entities reuse freed ids first.
+    @(private)
+    loader__measure :: proc(ld: ^Loader) -> (entities: int, attachments: int) {
+        w := ld.world
+        added := 0
+        attachments = ecs.pair_len(&w.attachments)
+
+        for d in ld.decls {
+            if d.existing {
+                attachments -= ecs.pair_count_of(&w.attachments, d.eid)
+            } else {
+                added += 1
+            }
+            for m, i in d.metas {
+                if !loader__meta_repeated(d.metas[:i], m.ref) do attachments += 1
+            }
+        }
+
+        f := &w.config_overbase.id_factory
+        entities = f.created_count + max(0, added - f.freed_count)
+        return
+    }
+
+    @(private)
+    loader__meta_repeated :: proc(earlier: []Meta_Use, ref: Ref) -> bool {
+        for e in earlier {
+            if e.ref.decl == ref.decl && (ref.decl >= 0 || e.ref.eid == ref.eid) do return true
+        }
+        return false
     }
 
 ///////////////////////////////////////////////////////////////////////////////

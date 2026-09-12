@@ -49,8 +49,8 @@ package ode_dos
         if overridable && !type_is_pod(type_info_of(T)) do return DOS_Error.Type_Not_POD // overrides are saved with the game
 
         db := &w.sets[set].db
-        ecs_err(ecs.table_init(&self.authored, db, w.cfg.max_archetypes)) or_return
-        ecs_err(ecs.table_init(&self.baked, db, w.cfg.max_archetypes)) or_return
+        ecs_err(ecs.table_init(&self.authored, db, w.config_cap)) or_return
+        ecs_err(ecs.table_init(&self.baked, db, w.config_cap)) or_return
 
         self.overridable = overridable
         if overridable {
@@ -64,7 +64,12 @@ package ode_dos
         bake :: proc(w: ^World, data: rawptr) -> Error {
             return property__bake(w, cast(^Property(T))data)
         }
-        world__add_baker(w, bake, self, set) or_return
+        grow :: proc(data: rawptr, cap: int) -> Error {
+            self := cast(^Property(T))data
+            ecs_err(ecs.grow(&self.authored, cap)) or_return
+            return ecs_err(ecs.grow(&self.baked, cap))
+        }
+        world__add_baker(w, bake, grow, self, set) or_return
 
         apply :: proc(data: rawptr, op: Binding_Op, a: ecs.entity_id, b: ecs.entity_id, value: rawptr) -> Error {
             self := cast(^Property(T))data

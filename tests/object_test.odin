@@ -28,7 +28,7 @@ package ode_dos__tests
     object__spawn_destroy__test :: proc(t: ^testing.T) {
         ctx: Obj_Ctx
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 32, max_objects = 16, keep_names = true, user_data = &ctx}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16, keep_names = true, user_data = &ctx}) == nil)
         defer dos.world_terminate(&w)
 
         health: dos.State(Obj_Health)
@@ -68,7 +68,7 @@ package ode_dos__tests
     @(test)
     object__names__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 32, max_objects = 16, keep_names = true}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16, keep_names = true}) == nil)
         defer dos.world_terminate(&w)
 
         dos.archetype(&w, "Guard")

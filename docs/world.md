@@ -14,17 +14,28 @@ A `World` must not be moved after `world_init`; ODE_ECS tables keep pointers int
 
 | field | default | meaning |
 |---|---|---|
-| `max_archetypes` | 2,048 | archetypes + metas + surfaces across all sets |
 | `max_config_sets` | 4 | CORE plus your own |
 | `max_objects` | 100,000 | live objects |
 | `max_links` | 32,768 | links per flavor, unless `link_init` sets `cap` |
-| `max_attachments` | 4 × `max_archetypes` | meta attachments across all archetypes and surfaces |
 | `max_named_objects` | 4,096 | objects that can have a name (at most `max_objects`) |
 | `keep_names` | debug builds | keep name strings for `name_of`, suggestions and inspect |
 | `user_data` | nil | how spawn hooks and effects reach your tables |
 | `allocator` | `context.allocator` | used for everything the World allocates |
 
-Every capacity is allocated at `world_init`; nothing grows during a frame.
+These capacities are allocated at `world_init`. Config space has no capacity to set: it sizes itself (see below). Nothing grows during a frame.
+
+## Config capacity
+
+A new World holds one config entity. Every `load` grows config space to exactly what the loaded files declare, before it writes anything: the first load sizes it, and a hot reload or a new set adds only what it declares. Ids never change, so objects, cached `archetype_id`s and save games are unaffected.
+
+```odin
+dos.config_capacity(&w)   // (archetypes, attachments): what config space holds now
+```
+
+- Capacity only grows. Unloading a set keeps it, and later loads reuse the freed ids.
+- `archetype`, `meta`, `surface` and `attach` called from code cannot know the total, so at capacity they double it (at least 16). A later load still grows exactly.
+- Growing allocates, so load and build config at load boundaries, never mid-frame.
+- ODE_ECS tables you add to a `config_db` yourself stay valid as config space grows, but keep the row capacity you gave them.
 
 ## Two id spaces, four id types
 

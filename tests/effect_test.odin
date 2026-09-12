@@ -30,7 +30,7 @@ package ode_dos__tests
     effect__apply_unapply__test :: proc(t: ^testing.T) {
         g: Ef_Game
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 16, max_objects = 16, user_data = &g}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16, user_data = &g}) == nil)
         defer dos.world_terminate(&w)
 
         testing.expect(t, dos.state_flags_init(&w, &g.status, "status") == nil)

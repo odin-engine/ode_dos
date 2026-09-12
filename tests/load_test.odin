@@ -57,7 +57,7 @@ package ode_dos__tests
 
     ld_setup :: proc(t: ^testing.T, g: ^Ld_Game) {
         w := &g.w
-        testing.expect(t, dos.world_init(w, {max_archetypes = 64, max_objects = 64, keep_names = true, user_data = g}) == nil)
+        testing.expect(t, dos.world_init(w, {max_objects = 64, keep_names = true, user_data = g}) == nil)
         testing.expect(t, dos.property_init(w, &g.mass, "mass") == nil)
         testing.expect(t, dos.property_init(w, &g.max_hp, "max-hit-points", overridable = true) == nil)
         testing.expect(t, dos.property_init(w, &g.air, "max-air-supply-ms") == nil)

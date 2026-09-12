@@ -19,6 +19,7 @@ ODE_DOS answers *"what is this thing?"*; ODE_ECS answers *"what do all these thi
   ODE_ECS entity, and what it "is" comes from the property and flag rows attached to it.
 - `bake` flattens inheritance into one value per archetype; `spawn` creates objects, which you run
   with ODE_ECS as usual.
+- Config space sizes itself: each load grows it to exactly what the KDL files declare.
 - Typed ids, typed links that snap automatically, effects, and save/load of runtime state.
 - Check your KDL files with a tool built on `cli_run` (see `samples/dos_tool`).
 

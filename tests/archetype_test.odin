@@ -17,7 +17,7 @@ package ode_dos__tests
     @(test)
     archetype__forest__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 16, keep_names = true}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16, keep_names = true}) == nil)
         defer dos.world_terminate(&w)
 
         physical, e1 := dos.archetype(&w, "Physical")
@@ -56,7 +56,7 @@ package ode_dos__tests
     @(test)
     archetype__kinds__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 16}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16}) == nil)
         defer dos.world_terminate(&w)
 
         wooden, _ := dos.meta(&w, "Wooden")
@@ -84,7 +84,7 @@ package ode_dos__tests
     @(test)
     archetype__metas__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 16, keep_names = true}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16, keep_names = true}) == nil)
         defer dos.world_terminate(&w)
 
         guard, _  := dos.archetype(&w, "Guard")
@@ -125,7 +125,7 @@ package ode_dos__tests
     @(test)
     archetype__config_sets__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 16, keep_names = true}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16, keep_names = true}) == nil)
         defer dos.world_terminate(&w)
 
         items, _ := dos.create_config_set(&w, "items")

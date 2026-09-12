@@ -22,7 +22,9 @@ package ode_dos__tests
         testing.expect(t, dos.world_init(&w) == nil)
         defer dos.world_terminate(&w)
 
-        testing.expect_value(t, w.cfg.max_archetypes, dos.DEFAULT_MAX_ARCHETYPES)
+        archetypes, attachments := dos.config_capacity(&w)
+        testing.expect_value(t, archetypes, 1)
+        testing.expect_value(t, attachments, 1)
         testing.expect_value(t, w.cfg.max_config_sets, dos.DEFAULT_MAX_CONFIG_SETS)
         testing.expect_value(t, w.cfg.max_objects, dos.DEFAULT_MAX_OBJECTS)
         testing.expect_value(t, w.cfg.max_links, dos.DEFAULT_MAX_LINKS)
@@ -39,7 +41,7 @@ package ode_dos__tests
     world__custom_config__test :: proc(t: ^testing.T) {
         marker := 42
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_config_sets = 2, max_objects = 16, keep_names = false, user_data = &marker}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_config_sets = 2, max_objects = 16, keep_names = false, user_data = &marker}) == nil)
         defer dos.world_terminate(&w)
 
         testing.expect(t, dos.user_data(&w) == &marker)
@@ -57,12 +59,12 @@ package ode_dos__tests
     @(test)
     world__terminate_resets__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 8, max_objects = 8}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 8}) == nil)
         dos.world_terminate(&w)
         testing.expect(t, w.state == .Not_Initialized)
 
         // a terminated World can be initialized again
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 8, max_objects = 8}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 8}) == nil)
         dos.world_terminate(&w)
     }
 
@@ -72,7 +74,7 @@ package ode_dos__tests
     @(test)
     world__config_sets__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_config_sets = 3, max_objects = 16}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_config_sets = 3, max_objects = 16}) == nil)
         defer dos.world_terminate(&w)
 
         items, err := dos.create_config_set(&w, "items")

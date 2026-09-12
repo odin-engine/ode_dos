@@ -122,8 +122,8 @@ package ode_dos
 
         g := new(Flag_Group, self.allocator) or_return
         db := &self.sets[set].db
-        ecs_err(ecs.table_init(&g.authored, db, self.cfg.max_archetypes)) or_return
-        ecs_err(ecs.flags_table_init(&g.baked, db, self.cfg.max_archetypes)) or_return
+        ecs_err(ecs.table_init(&g.authored, db, self.config_cap)) or_return
+        ecs_err(ecs.flags_table_init(&g.baked, db, self.config_cap)) or_return
         g.set = set
 
         _, aerr := append(&self.flag_groups, g)

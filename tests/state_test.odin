@@ -29,7 +29,7 @@ package ode_dos__tests
     @(test)
     state__values__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 32, max_objects = 16}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16}) == nil)
         defer dos.world_terminate(&w)
 
         dos.archetype(&w, "Guard")
@@ -58,7 +58,7 @@ package ode_dos__tests
     @(test)
     state__flags__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 32, max_objects = 16}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 16}) == nil)
         defer dos.world_terminate(&w)
 
         dos.archetype(&w, "Guard")

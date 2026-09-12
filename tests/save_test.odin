@@ -35,7 +35,7 @@ package ode_dos__tests
     // Both games must declare the same things in the same order.
     @(private = "file")
     sv_setup :: proc(t: ^testing.T, g: ^Sv_Game) {
-        testing.expect(t, dos.world_init(&g.w, {max_archetypes = 16, max_objects = 16}) == nil)
+        testing.expect(t, dos.world_init(&g.w, {max_objects = 16}) == nil)
         testing.expect(t, dos.state_init(&g.w, &g.health, "health") == nil)
         testing.expect(t, dos.state_flags_init(&g.w, &g.status, "status") == nil)
         testing.expect(t, dos.link_init(&g.w, &g.contains, "Contains") == nil)

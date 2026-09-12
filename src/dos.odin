@@ -19,7 +19,6 @@ package ode_dos
 
     VALIDATIONS :: #config(DOS_VALIDATIONS, true)
 
-    DEFAULT_MAX_ARCHETYPES  :: 2_048
     DEFAULT_MAX_CONFIG_SETS :: 4
     DEFAULT_MAX_OBJECTS     :: 100_000
     DEFAULT_MAX_LINKS       :: 32_768
@@ -86,6 +85,7 @@ package ode_dos
         world_terminate :: world__terminate
         runtime         :: world__runtime
         user_data       :: world__user_data
+        config_capacity :: world__config_capacity
 
     //
     // Config sets

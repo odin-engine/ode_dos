@@ -42,6 +42,8 @@ dos.load(&w, "data/") or_return   // after editing a file
 
 A name that exists in another set, or as another kind, is an error.
 
+A load grows config space by exactly what it adds; see [Config capacity](world.md#config-capacity).
+
 ## Custom decoders
 
 Reflection covers structs, fixed arrays, integers, floats, booleans, strings and enums. For anything else, pass a decode proc to `property_init`, `state_init` or `link_init`:

@@ -21,7 +21,7 @@ package ode_dos__tests
     @(test)
     property__precedence__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 32, keep_names = true}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 32, keep_names = true}) == nil)
         defer dos.world_terminate(&w)
 
         mass: dos.Property(Prop_Mass)
@@ -90,7 +90,7 @@ package ode_dos__tests
     @(test)
     property__wrong_kind__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 16, max_objects = 8}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 8}) == nil)
         defer dos.world_terminate(&w)
 
         mass, other: dos.Property(Prop_Mass)
@@ -107,7 +107,7 @@ package ode_dos__tests
     @(test)
     property__flags__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 32}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 32}) == nil)
         defer dos.world_terminate(&w)
 
         rope, flammable: dos.Flag
@@ -147,7 +147,7 @@ package ode_dos__tests
     @(test)
     property__unload_set__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 64, max_objects = 32}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 32}) == nil)
         defer dos.world_terminate(&w)
 
         items, _ := dos.create_config_set(&w, "items")
@@ -181,7 +181,7 @@ package ode_dos__tests
     @(test)
     property__non_pod__test :: proc(t: ^testing.T) {
         w: dos.World
-        testing.expect(t, dos.world_init(&w, {max_archetypes = 16, max_objects = 8}) == nil)
+        testing.expect(t, dos.world_init(&w, {max_objects = 8}) == nil)
         defer dos.world_terminate(&w)
 
         // configuration may hold strings; objects just cannot override it

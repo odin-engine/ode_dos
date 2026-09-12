@@ -9,6 +9,7 @@ world_init(w: ^World, cfg := World_Config{}) -> Error
 world_terminate(w: ^World)
 runtime(w: ^World) -> ^ecs.Database
 user_data(w: ^World) -> rawptr
+config_capacity(w: ^World) -> (archetypes: int, attachments: int)
 ```
 
 ## Config sets
@@ -162,7 +163,7 @@ Attachment   :: struct { meta: meta_id, priority: i32 }
 Load_Error   :: struct { file: string, line, column, span: int, message, suggestion: string }
 
 DOS_VALIDATIONS (#config, default true)
-DEFAULT_MAX_ARCHETYPES, DEFAULT_MAX_CONFIG_SETS, DEFAULT_MAX_OBJECTS, DEFAULT_MAX_LINKS, DEFAULT_MAX_NAMED_OBJECTS
+DEFAULT_MAX_CONFIG_SETS, DEFAULT_MAX_OBJECTS, DEFAULT_MAX_LINKS, DEFAULT_MAX_NAMED_OBJECTS
 MAX_SPAWN_HOOKS
 CLI_USAGE
 ```

@@ -167,6 +167,10 @@ package ode_dos
         if !world__set_is_loaded(self, set) do return {}, DOS_Error.Config_Set_Not_Found
         if _, _, exists := world__find_config(self, name); exists do return {}, DOS_Error.Name_Already_Exists
 
+        if ecs.entities_len(&self.config_overbase) >= self.config_cap {
+            world__grow_config(self, max(MIN_CODE_GROWTH, 2 * self.config_cap), self.attachments_cap) or_return
+        }
+
         e, cerr := ecs.create_entity(&self.sets[set].db)
         if cerr != nil do return {}, ecs_err(cerr)
 
@@ -192,6 +196,10 @@ package ode_dos
         if data, ok := ecs.pair_get_data(&self.attachments, holder, target); ok {
             data.priority = i32(priority)
             return nil
+        }
+
+        if ecs.pair_len(&self.attachments) >= self.attachments_cap {
+            world__grow_config(self, self.config_cap, max(MIN_CODE_GROWTH, 2 * self.attachments_cap)) or_return
         }
 
         _, err := ecs.pair_add(&self.attachments, holder, target, Attachment_Data{ priority = i32(priority) })

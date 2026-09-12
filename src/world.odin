@@ -23,11 +23,9 @@ package ode_dos
 // World_Config
 
     World_Config :: struct {
-        max_archetypes:  int,          // archetypes + metas + surfaces across all sets; default 2_048
         max_config_sets: int,          // default 4: CORE plus three of your own.
         max_objects:     int,          // live instances; default 100_000
         max_links:       int,          // per link flavor unless overridden; default 32_768
-        max_attachments: int,          // meta attachments across all archetypes and surfaces; default 4 * max_archetypes
         max_named_objects: int,        // objects that can have a name; default 4_096, at most max_objects
         keep_names:      Maybe(bool),  // default: true in debug builds
         user_data:       rawptr,       // how spawn hooks and effects reach your tables
@@ -61,6 +59,8 @@ package ode_dos
         sets:            []Config_Set,
         relations:       ecs.Relations_Table,          // archetype forest, on CORE
         attachments:     ecs.Pair_Table(Attachment_Data), // holder -> meta, on CORE
+        config_cap:      int, // config entities; grows with loads
+        attachments_cap: int,
 
         // indexed by config eid.ix
         config_eid:    []ecs.entity_id,
@@ -104,11 +104,9 @@ package ode_dos
         defer if err != nil do world__terminate(self)
 
         self.cfg = cfg
-        if self.cfg.max_archetypes <= 0 do self.cfg.max_archetypes = DEFAULT_MAX_ARCHETYPES
         if self.cfg.max_config_sets <= 0 do self.cfg.max_config_sets = DEFAULT_MAX_CONFIG_SETS
         if self.cfg.max_objects <= 0 do self.cfg.max_objects = DEFAULT_MAX_OBJECTS
         if self.cfg.max_links <= 0 do self.cfg.max_links = DEFAULT_MAX_LINKS
-        if self.cfg.max_attachments <= 0 do self.cfg.max_attachments = 4 * self.cfg.max_archetypes
         if self.cfg.max_named_objects <= 0 do self.cfg.max_named_objects = DEFAULT_MAX_NAMED_OBJECTS
         self.cfg.max_named_objects = min(self.cfg.max_named_objects, self.cfg.max_objects)
 
@@ -120,9 +118,11 @@ package ode_dos
         ecs_err(ecs.init(&self.runtime_db, u32(self.cfg.max_objects), self.allocator)) or_return
         ecs_err(ecs.table_init(&self.archetype_table, &self.runtime_db, self.cfg.max_objects)) or_return
         ecs_err(ecs.compact_table_init(&self.object_name_table, &self.runtime_db, self.cfg.max_named_objects)) or_return
-        ecs_err(ecs.overbase_init(&self.config_overbase, u32(self.cfg.max_archetypes), self.cfg.max_config_sets, self.allocator)) or_return
+        self.config_cap = 1
+        self.attachments_cap = 1
+        ecs_err(ecs.overbase_init(&self.config_overbase, u32(self.config_cap), self.cfg.max_config_sets, self.allocator)) or_return
 
-        n := self.cfg.max_archetypes
+        n := self.config_cap
         self.sets          = make([]Config_Set, self.cfg.max_config_sets, self.allocator) or_return
         self.config_eid    = make([]ecs.entity_id, n, self.allocator) or_return
         self.config_kind   = make([]Config_Kind, n, self.allocator) or_return
@@ -138,7 +138,7 @@ package ode_dos
         self.bindings = make([dynamic]Binding, 0, 32, self.allocator) or_return
         self.bakers = make([dynamic]Baker, 0, 32, self.allocator) or_return
         self.flag_groups = make([dynamic]^Flag_Group, 0, 4, self.allocator) or_return
-        self.meta_scratch = make([]Attachment, self.cfg.max_attachments, self.allocator) or_return
+        self.meta_scratch = make([]Attachment, self.attachments_cap, self.allocator) or_return
         self.effects = make([dynamic]Effect_Entry, 0, 16, self.allocator) or_return
         self.effect_tables = make([dynamic]^ecs.Flags_Table, 0, 1, self.allocator) or_return
         self.meta_priority = make([]i32, n, self.allocator) or_return
@@ -151,7 +151,7 @@ package ode_dos
 
         core := &self.sets[CORE].db
         ecs_err(ecs.relations_init(&self.relations, core, n)) or_return
-        ecs_err(ecs.pair_init(&self.attachments, core, holders_cap = n, pairs_cap = self.cfg.max_attachments)) or_return
+        ecs_err(ecs.pair_init(&self.attachments, core, holders_cap = n, pairs_cap = self.attachments_cap)) or_return
 
         return nil
     }
