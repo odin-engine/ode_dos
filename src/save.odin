@@ -22,6 +22,8 @@ package ode_dos
     // declarations in the same order and the same configuration.
     world__load_game :: proc(self: ^World, path: string) -> Error {
         when VALIDATIONS do assert(world__is_valid(self))
+
+        world__reserve_overrides(self) or_return // the snapshot may hold more overrides than we have room for
         ecs_err(ecs.load_from_file(&self.runtime_db, path, self.allocator)) or_return
         return world__rebuild_object_names(self)
     }

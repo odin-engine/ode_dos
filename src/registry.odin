@@ -43,6 +43,9 @@ package ode_dos
     // enum value index is set, Link its index-th outgoing link (other = target), Flag whether set.
     Binding_Read :: proc(data: rawptr, obj: ecs.entity_id, index: int) -> (value: rawptr, other: ecs.entity_id, source: Value_Source, ok: bool)
 
+    // Grows the binding's runtime storage to its full capacity.
+    Binding_Reserve :: proc(data: rawptr) -> Error
+
     // Reads a KDL node into out; report problems with decode_error.
     Decode_Proc :: proc(ctx: ^Decode_Context, node: ^Load_Node, out: rawptr) -> bool
 
@@ -56,7 +59,8 @@ package ode_dos
         apply:     Binding_Apply,
         decode:    Decode_Proc,
         read:      Binding_Read,
-        overridable: bool,          // Property: objects can override it
+        reserve:   Binding_Reserve,
+        can_override: bool,         // Property: T is plain data, so objects can override it
     }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -77,7 +81,7 @@ package ode_dos
     }
 
     @(private)
-    world__add_binding :: proc(self: ^World, name: string, kind: Binding_Kind, set := NO_CONFIG_SET, type_info: ^rt.Type_Info = nil, data: rawptr = nil, apply: Binding_Apply = nil, decode: Decode_Proc = nil, read: Binding_Read = nil) -> Error {
+    world__add_binding :: proc(self: ^World, name: string, kind: Binding_Kind, set := NO_CONFIG_SET, type_info: ^rt.Type_Info = nil, data: rawptr = nil, apply: Binding_Apply = nil, decode: Decode_Proc = nil, read: Binding_Read = nil, reserve: Binding_Reserve = nil) -> Error {
         if name == "" do return DOS_Error.Invalid_Name
         if world__binding_exists(self, name) do return DOS_Error.Name_Already_Exists
 
@@ -92,6 +96,7 @@ package ode_dos
             apply     = apply,
             decode    = decode,
             read      = read,
+            reserve   = reserve,
         })
         if err != nil {
             delete(copy, self.allocator)

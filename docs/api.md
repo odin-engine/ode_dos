@@ -58,7 +58,7 @@ on_spawn(w: ^World, hook: Spawn_Hook) -> Error          // Spawn_Hook :: proc(w:
 ## Properties
 
 ```odin
-property_init(w: ^World, c: ^Property($T), name: string, set := CORE, overridable := false, overrides_cap := 0, decode: Decode_Proc = nil) -> Error
+property_init(w: ^World, c: ^Property($T), name: string, set := CORE, overrides_cap := 0, decode: Decode_Proc = nil) -> Error
 set_property(c: ^Property($T), holder: archetype_id | meta_id | surface_id, value: T) -> Error
 get_property(c: ^Property($T), holder: archetype_id | meta_id | surface_id) -> ^T
 unset_property(c: ^Property($T), holder: archetype_id | meta_id | surface_id) -> Error

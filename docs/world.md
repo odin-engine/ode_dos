@@ -17,7 +17,7 @@ A `World` must not be moved after `world_init`; ODE_ECS tables keep pointers int
 | `max_config_sets` | 4 | CORE plus your own |
 | `max_objects` | 100,000 | live objects |
 | `max_links` | 32,768 | links per flavor, unless `link_init` sets `cap` |
-| `max_named_objects` | 4,096 | objects that can have a name (at most `max_objects`) |
+| `max_named_objects` | 4,096 | objects that can have a name (at most `max_objects`); also sizes the name index |
 | `keep_names` | debug builds | keep name strings for `name_of`, suggestions and inspect |
 | `user_data` | nil | how spawn hooks and effects reach your tables |
 | `allocator` | `context.allocator` | used for everything the World allocates |
@@ -76,6 +76,6 @@ Names are dotted (`core.Guard`, `bafford.Guard01`); the namespace is purely lexi
 Error :: union #shared_nil { DOS_Error, ecs.API_Error, oc.Core_Error, oc.Error, runtime.Allocator_Error }
 ```
 
-`DOS_Error` is `Invalid_Name`, `Name_Already_Exists`, `Name_Not_Found`, `Wrong_Kind`, `Parent_Not_Allowed`, `Config_Set_Not_Found`, `Cannot_Unload_Core`, `Load_Failed`, `Type_Not_POD` or `Not_Overridable`. ODE_ECS errors pass through unchanged.
+`DOS_Error` is `Invalid_Name`, `Name_Already_Exists`, `Name_Not_Found`, `Wrong_Kind`, `Parent_Not_Allowed`, `Config_Set_Not_Found`, `Cannot_Unload_Core`, `Load_Failed` or `Type_Not_POD`. ODE_ECS errors pass through unchanged.
 
 The runtime database is ODE_ECS's own: `dos.runtime(&w)` returns it for views, groups and command buffers.

@@ -63,7 +63,7 @@ package thief_game
         dos.world_init(w, { max_objects = 4096, keep_names = true, user_data = g }) or_return
 
         dos.property_init(w, &g.mass, "mass") or_return
-        dos.property_init(w, &g.max_hp, "max-hit-points", overridable = true) or_return
+        dos.property_init(w, &g.max_hp, "max-hit-points") or_return
         dos.property_init(w, &g.vision, "vision-range") or_return
         dos.property_init(w, &g.footsteps, "footstep-sound") or_return
         dos.flag_init(w, &g.rope, "can-attach-rope") or_return

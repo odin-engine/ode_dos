@@ -17,8 +17,9 @@ package ode_dos
         set:         config_set_id,
         authored:    ecs.Table(T),         // authored on archetypes, metas and surfaces
         baked:       ecs.Table(Baked(T)),  // effective value per archetype and surface, with its source
-        override:    ecs.Compact_Table(T), // per-object overrides, runtime; only when overridable
-        overridable: bool,
+        override:    ecs.Compact_Table(T), // per-object overrides, runtime; grown on first override
+        can_override: bool,                // T is plain data, so it can be saved with the game
+        overrides_cap: int,
     }
 
     @(private)
@@ -40,22 +41,23 @@ package ode_dos
         id:   ecs.entity_id, // the object for Override, else the archetype, surface or meta
     }
 
-    // overridable allows per-object overrides (T must be plain data); overrides_cap defaults to min(max_objects, 4096).
-    property__init :: proc(w: ^World, self: ^Property($T), name: string, set := CORE, overridable := false, overrides_cap := 0, decode: Decode_Proc = nil) -> Error {
+    // Objects can override a property of plain data; its table holds one row until the first
+    // override grows it to overrides_cap, which defaults to min(max_objects, 4096).
+    property__init :: proc(w: ^World, self: ^Property($T), name: string, set := CORE, overrides_cap := 0, decode: Decode_Proc = nil) -> Error {
         when VALIDATIONS do assert(world__is_valid(w) && self != nil)
 
         if !world__set_is_loaded(w, set) do return DOS_Error.Config_Set_Not_Found
         if world__binding_exists(w, name) do return DOS_Error.Name_Already_Exists
-        if overridable && !type_is_pod(type_info_of(T)) do return DOS_Error.Type_Not_POD // overrides are saved with the game
 
         db := &w.sets[set].db
         ecs_err(ecs.table_init(&self.authored, db, w.config_cap)) or_return
         ecs_err(ecs.table_init(&self.baked, db, w.config_cap)) or_return
 
-        self.overridable = overridable
-        if overridable {
+        self.can_override = type_is_pod(type_info_of(T)) // overrides are saved with the game
+        if self.can_override {
             ocap := overrides_cap > 0 ? overrides_cap : 4096
-            ecs_err(ecs.compact_table_init(&self.override, &w.runtime_db, min(ocap, w.cfg.max_objects))) or_return
+            self.overrides_cap = min(ocap, w.cfg.max_objects)
+            ecs_err(ecs.compact_table_init(&self.override, &w.runtime_db, 1)) or_return
         }
 
         self.world = w
@@ -84,8 +86,13 @@ package ode_dos
             v, src := property__resolve_with_source(cast(^Property(T))data, object_id(obj))
             return v, {}, src, v != nil
         }
-        world__add_binding(w, name, .Property, set, type_info_of(T), self, apply, decode, read) or_return
-        world__find_binding(w, name).overridable = overridable
+        reserve :: proc(data: rawptr) -> Error {
+            self := cast(^Property(T))data
+            if !self.can_override do return nil
+            return ecs_err(ecs.grow(&self.override, self.overrides_cap))
+        }
+        world__add_binding(w, name, .Property, set, type_info_of(T), self, apply, decode, read, reserve) or_return
+        world__find_binding(w, name).can_override = self.can_override
         return nil
     }
 
@@ -119,7 +126,7 @@ package ode_dos
     // The override, else the baked archetype value; nil before bake or when nothing is authored.
     property__resolve_object :: proc(self: ^Property($T), obj: object_id) -> ^T {
         eid := ecs.entity_id(obj)
-        if self.overridable {
+        if self.can_override {
             if o := ecs.get_component(&self.override, eid); o != nil do return o
         }
 
@@ -138,7 +145,7 @@ package ode_dos
 
     property__resolve_with_source :: proc(self: ^Property($T), obj: object_id) -> (^T, Value_Source) {
         eid := ecs.entity_id(obj)
-        if self.overridable {
+        if self.can_override {
             if o := ecs.get_component(&self.override, eid); o != nil do return o, Value_Source{ kind = .Override, id = eid }
         }
 
@@ -155,15 +162,17 @@ package ode_dos
 ///////////////////////////////////////////////////////////////////////////////
 // Overrides
 
-    // The object's own override; nil when none or when the property is not overridable.
+    // The object's own override; nil when it has none, or when T is not plain data.
     property__local :: proc(self: ^Property($T), obj: object_id) -> ^T {
-        if !self.overridable do return nil
+        if !self.can_override do return nil
         return ecs.get_component(&self.override, ecs.entity_id(obj))
     }
 
-    // Not_Overridable unless the property was declared with overridable = true.
+    // Type_Not_POD when T is not plain data, since overrides are saved with the game.
     property__override :: proc(self: ^Property($T), obj: object_id, value: T) -> Error {
-        if !self.overridable do return DOS_Error.Not_Overridable
+        if !self.can_override do return DOS_Error.Type_Not_POD
+        if self.override.cap < self.overrides_cap do ecs_err(ecs.grow(&self.override, self.overrides_cap)) or_return
+
         c, err := ecs.add_component(&self.override, ecs.entity_id(obj))
         if c == nil do return ecs_err(err)
         c^ = value
@@ -171,12 +180,21 @@ package ode_dos
     }
 
     property__clear_override :: proc(self: ^Property($T), obj: object_id) -> Error {
-        if !self.overridable do return DOS_Error.Not_Overridable
+        if !self.can_override do return DOS_Error.Type_Not_POD
         return ecs_err(ecs.remove_component(&self.override, ecs.entity_id(obj)))
     }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Private
+
+    // Full override capacity everywhere, so any snapshot fits.
+    @(private)
+    world__reserve_overrides :: proc(self: ^World) -> Error {
+        for &b in self.bindings {
+            if b.reserve != nil do b.reserve(b.data) or_return
+        }
+        return nil
+    }
 
     @(private)
     property__author :: proc(self: ^Property($T), holder: ecs.entity_id, kind: Config_Kind, value: T) -> Error {

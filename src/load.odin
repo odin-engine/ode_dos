@@ -447,8 +447,8 @@ package ode_dos
 
         #partial switch b.kind {
         case .Property:
-            if !b.overridable {
-                loader__error_node(ld, node, "", "%q is not overridable; declare it with property_init(..., overridable = true)", node.name)
+            if !b.can_override {
+                loader__error_node(ld, node, "", "%q cannot be overridden on an object: its type is not plain data", node.name)
                 return
             }
             if value, ok := loader__decode(ld, b, node); ok do append(&o.values, Staged{ binding = b, op = .Override, value = value })

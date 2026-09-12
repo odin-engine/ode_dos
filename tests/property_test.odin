@@ -27,7 +27,7 @@ package ode_dos__tests
         mass: dos.Property(Prop_Mass)
         max_hp: dos.Property(Prop_Max_HP)
         vision: dos.Property(Prop_Vision)
-        testing.expect(t, dos.property_init(&w, &mass, "mass", overridable = true) == nil)
+        testing.expect(t, dos.property_init(&w, &mass, "mass") == nil)
         testing.expect(t, dos.property_init(&w, &max_hp, "max-hit-points") == nil)
         testing.expect(t, dos.property_init(&w, &vision, "vision-range") == nil)
 
@@ -94,7 +94,7 @@ package ode_dos__tests
         defer dos.world_terminate(&w)
 
         mass, other: dos.Property(Prop_Mass)
-        testing.expect(t, dos.property_init(&w, &mass, "mass", overridable = true) == nil)
+        testing.expect(t, dos.property_init(&w, &mass, "mass") == nil)
         testing.expect(t, dos.property_init(&w, &other, "mass") == dos.DOS_Error.Name_Already_Exists)
 
         wooden, _ := dos.meta(&w, "Wooden")
@@ -193,13 +193,9 @@ package ode_dos__tests
 
         obj, _ := dos.spawn(&w, "Guard")
         testing.expect_value(t, dos.resolve(&label, obj).text, "guard")
-        testing.expect(t, dos.override(&label, obj, Prop_Name{ "x" }) == dos.DOS_Error.Not_Overridable)
-        testing.expect(t, dos.clear_override(&label, obj) == dos.DOS_Error.Not_Overridable)
+        testing.expect(t, dos.override(&label, obj, Prop_Name{ "x" }) == dos.DOS_Error.Type_Not_POD)
+        testing.expect(t, dos.clear_override(&label, obj) == dos.DOS_Error.Type_Not_POD)
         testing.expect(t, dos.local(&label, obj) == nil)
-
-        // overrides are saved with the game, so they need plain data
-        named: dos.Property(Prop_Name)
-        testing.expect(t, dos.property_init(&w, &named, "named", overridable = true) == dos.DOS_Error.Type_Not_POD)
 
         // runtime tables are always saved, so they must be plain data
         state: dos.State(Prop_Name)
@@ -207,3 +203,35 @@ package ode_dos__tests
         link: dos.Link(Prop_Name)
         testing.expect(t, dos.link_init(&w, &link, "Named") == dos.DOS_Error.Type_Not_POD)
     }
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Override table
+
+    @(test)
+    property__override_table_grows_on_first_use__test :: proc(t: ^testing.T) {
+        w: dos.World
+        testing.expect(t, dos.world_init(&w, {max_objects = 8}) == nil)
+        defer dos.world_terminate(&w)
+
+        mass: dos.Property(Prop_Mass)
+        testing.expect(t, dos.property_init(&w, &mass, "mass") == nil)
+
+        guard, _ := dos.archetype(&w, "Guard")
+        testing.expect(t, dos.set_property(&mass, guard, Prop_Mass{ 10 }) == nil)
+        testing.expect(t, dos.bake(&w) == nil)
+        obj, _ := dos.spawn(&w, "Guard")
+
+        // a declared property holds one row until it is used
+        testing.expect_value(t, mass.override.cap, 1)
+        testing.expect(t, dos.local(&mass, obj) == nil)
+        testing.expect_value(t, dos.resolve(&mass, obj).value, 10)
+
+        // the first override grows it to overrides_cap, here min(4096, max_objects)
+        testing.expect(t, dos.override(&mass, obj, Prop_Mass{ 95 }) == nil)
+        testing.expect_value(t, mass.override.cap, 8)
+        testing.expect_value(t, dos.resolve(&mass, obj).value, 95)
+        testing.expect(t, dos.local(&mass, obj) != nil)
+        testing.expect(t, dos.clear_override(&mass, obj) == nil)
+        testing.expect_value(t, dos.resolve(&mass, obj).value, 10)
+    }

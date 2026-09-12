@@ -37,7 +37,7 @@ link "Contains" from="Guard01" to="Sword01" { slot "RightHand" }
 | `archetype "Name"` | `parent="Other"` | property values, flags, `meta` |
 | `meta "Name"` | `priority=N` (default when attached) | property values, flags |
 | `surface "Name"` | | property values, flags, `meta` |
-| `object "Name"` | `archetype="A"` (required) | overrides of overridable properties, state values, state flags |
+| `object "Name"` | `archetype="A"` (required) | property overrides, state values, state flags |
 | `link "Flavor"` | `from="Object"`, `to="Object"` | the link's data |
 
 Inside an archetype, meta or surface, `meta "M" priority=N` attaches a meta; without `priority` it uses the meta's own `priority`, else 0.
@@ -62,4 +62,4 @@ A child node named after a declared `Property`, `State` or `State_Flags` sets it
 
 A node that is not a declared name and has only children, like `ai { ... }`, is a group: its children are read as if they were written directly inside.
 
-On an object, a `Property` value is an override, allowed only for properties declared with `overridable = true`; a `Flag` cannot be set on an object.
+On an object, a `Property` value is an override, unless the property holds something other than plain data; a `Flag` cannot be set on an object.

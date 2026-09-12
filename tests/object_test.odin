@@ -100,3 +100,27 @@ package ode_dos__tests
         testing.expect(t, !ok)
         testing.expect(t, dos.set_name(&w, g2, "Captain") == nil)
     }
+
+
+    // Names are bounded by max_named_objects, which is what the name index is sized to.
+    @(test)
+    object__named_limit__test :: proc(t: ^testing.T) {
+        w: dos.World
+        testing.expect(t, dos.world_init(&w, {max_objects = 8, max_named_objects = 2, keep_names = true}) == nil)
+        defer dos.world_terminate(&w)
+
+        dos.archetype(&w, "Guard")
+        a, _ := dos.spawn(&w, "Guard")
+        b, _ := dos.spawn(&w, "Guard")
+        c, _ := dos.spawn(&w, "Guard")
+
+        testing.expect(t, dos.set_name(&w, a, "A") == nil)
+        testing.expect(t, dos.set_name(&w, b, "B") == nil)
+        testing.expect(t, dos.set_name(&w, c, "C") != nil)
+
+        _, found := dos.find(&w, "C")
+        testing.expect(t, !found)
+        got, ok := dos.find(&w, "B")
+        testing.expect(t, ok && got == b)
+        testing.expect_value(t, dos.name_of(&w, a), "A")
+    }

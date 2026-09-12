@@ -39,7 +39,7 @@ package ode_dos__tests
         testing.expect(t, dos.state_init(&g.w, &g.health, "health") == nil)
         testing.expect(t, dos.state_flags_init(&g.w, &g.status, "status") == nil)
         testing.expect(t, dos.link_init(&g.w, &g.contains, "Contains") == nil)
-        testing.expect(t, dos.property_init(&g.w, &g.mass, "mass", overridable = true) == nil)
+        testing.expect(t, dos.property_init(&g.w, &g.mass, "mass") == nil)
         testing.expect(t, dos.effect_register(&g.w, "Burning", dos.Effect{}) == nil)
 
         guard, _ := dos.archetype(&g.w, "Guard")
@@ -86,3 +86,33 @@ package ode_dos__tests
         testing.expect_value(t, dos.resolve(&b.mass, g).value, 95)
         testing.expect(t, dos.affected(&b.w, g, "Burning"))
     }
+
+
+    // A snapshot saved before any override loads into a World that has already overridden.
+    @(test)
+    save__lazy_override_tables__test :: proc(t: ^testing.T) {
+        PATH :: "out/save_lazy_override.bin"
+        defer os.remove(PATH)
+
+        a: Sv_Game
+        sv_setup(t, &a)
+        defer dos.world_terminate(&a.w)
+
+        guard, _ := dos.spawn(&a.w, "Guard")
+        testing.expect(t, dos.set_name(&a.w, guard, "Guard01") == nil)
+        testing.expect_value(t, a.mass.override.cap, 1)
+        testing.expect(t, dos.save_game(&a.w, PATH) == nil)
+
+        b: Sv_Game
+        sv_setup(t, &b)
+        defer dos.world_terminate(&b.w)
+
+        other, _ := dos.spawn(&b.w, "Guard")
+        testing.expect(t, dos.override(&b.mass, other, Sv_Mass{ 95 }) == nil)
+        testing.expect(t, dos.load_game(&b.w, PATH) == nil)
+
+        g, found := dos.find(&b.w, "Guard01")
+        testing.expect(t, found)
+        if !found do return
+        testing.expect_value(t, dos.resolve(&b.mass, g).value, 10)
+    }

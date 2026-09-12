@@ -80,7 +80,7 @@ main :: proc() {
     defer dos.world_terminate(w)
 
     dos.property_init(w, &g.mass, "mass")
-    dos.property_init(w, &g.max_hp, "max-hit-points", overridable = true)
+    dos.property_init(w, &g.max_hp, "max-hit-points")
     dos.state_init(w, &g.health, "health")
 
     // properties become state at spawn

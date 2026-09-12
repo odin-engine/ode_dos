@@ -59,7 +59,7 @@ package ode_dos__tests
         w := &g.w
         testing.expect(t, dos.world_init(w, {max_objects = 64, keep_names = true, user_data = g}) == nil)
         testing.expect(t, dos.property_init(w, &g.mass, "mass") == nil)
-        testing.expect(t, dos.property_init(w, &g.max_hp, "max-hit-points", overridable = true) == nil)
+        testing.expect(t, dos.property_init(w, &g.max_hp, "max-hit-points") == nil)
         testing.expect(t, dos.property_init(w, &g.air, "max-air-supply-ms") == nil)
         testing.expect(t, dos.property_init(w, &g.vision, "vision-range") == nil)
         testing.expect(t, dos.property_init(w, &g.sound, "footstep-sound") == nil)
@@ -182,7 +182,7 @@ package ode_dos__tests
         ld_expect_failure(t, "bad_enum.kdl", `unknown status flag "Sleeping"`)
         ld_expect_failure(t, "syntax.kdl", "KDL syntax error")
         ld_expect_failure(t, "unknown_top.kdl", `unknown node "archetyp"`, "archetype")
-        ld_expect_failure(t, "override_string.kdl", "is not overridable")
+        ld_expect_failure(t, "override_string.kdl", "not plain data")
     }
 
     @(test)

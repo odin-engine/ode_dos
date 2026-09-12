@@ -33,7 +33,7 @@ package ode_dos
         if world__binding_exists(w, name) do return DOS_Error.Name_Already_Exists
         if !type_is_pod(type_info_of(T)) do return DOS_Error.Type_Not_POD
         pairs := cap > 0 ? cap : w.cfg.max_links
-        ecs_err(ecs.pair_init(&self.table, &w.runtime_db, holders_cap = w.cfg.max_objects, pairs_cap = pairs)) or_return
+        ecs_err(ecs.pair_init(&self.table, &w.runtime_db, holders_cap = min(w.cfg.max_objects, pairs), pairs_cap = pairs)) or_return
         self.world = w
 
         apply :: proc(data: rawptr, op: Binding_Op, a: ecs.entity_id, b: ecs.entity_id, value: rawptr) -> Error {

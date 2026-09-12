@@ -52,7 +52,6 @@ package ode_dos
         Cannot_Unload_Core,
         Load_Failed,
         Type_Not_POD,    // runtime-side values must be plain data so the game can be saved
-        Not_Overridable, // the property was declared without overridable = true
     }
 
     Error :: union #shared_nil {

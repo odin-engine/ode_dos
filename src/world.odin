@@ -130,7 +130,7 @@ package ode_dos
         self.config_hash   = make([]u64, n, self.allocator) or_return
 
         oc_maps.rh_map64__init(&self.config_names, oc_maps.rh_map64__capacity_for(n), self.allocator) or_return
-        oc_maps.rh_map64__init(&self.object_names, oc_maps.rh_map64__capacity_for(self.cfg.max_objects), self.allocator) or_return
+        oc_maps.rh_map64__init(&self.object_names, oc_maps.rh_map64__capacity_for(self.cfg.max_named_objects), self.allocator) or_return
         if self.keep_names {
             self.config_strings = make(map[u64]string, allocator = self.allocator)
             self.object_strings = make(map[u64]string, allocator = self.allocator)
