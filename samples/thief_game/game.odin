@@ -1,8 +1,9 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    The declarations shared by the Thief demo and its tool: the Odin types, config values,
-    state, flags, links and effects, declared by one setup proc.
+    The declarations shared by the Thief demo and its tool: the Odin types, the properties, flags,
+    state flags, effects and link flavors a designer can author, declared by one setup proc.
+    Everything here is configuration; the runtime is the demo's own ODE_ECS Database.
 */
 package thief_game
 
@@ -17,8 +18,6 @@ package thief_game
     Vision    :: struct { range: f32 }
     Sound     :: struct { name: string }
     Transform :: struct { position: [3]f32 }
-    Velocity  :: struct { v: [3]f32 }
-    Health    :: struct { current, max: int }
 
     Slot :: enum u8 {
         Left_Hand,
@@ -38,19 +37,17 @@ package thief_game
     }
 
     Game :: struct {
-        world:     dos.World,
+        cfg:       dos.Config,
 
-        mass:      dos.Property(Mass),   // configuration
+        mass:      dos.Property(Mass),
         max_hp:    dos.Property(Max_HP),
         vision:    dos.Property(Vision),
         footsteps: dos.Property(Sound),
+        transform: dos.Property(Transform),
+
         rope:      dos.Flag,
-
-        transform: dos.State(Transform), // runtime
-        velocity:  dos.State(Velocity),
-        health:    dos.State(Health),
         status:    dos.State_Flags(Status),
-
+        effects:   dos.Effects,
         contains:  dos.Link(Contains),
     }
 
@@ -59,40 +56,21 @@ package thief_game
 
     // Declares everything; the Game must not move afterwards.
     setup :: proc(g: ^Game) -> dos.Error {
-        w := &g.world
-        dos.world_init(w, { max_objects = 4096, keep_names = true, user_data = g }) or_return
+        cfg := &g.cfg
+        dos.config_init(cfg, { keep_names = true, user_data = g }) or_return
 
-        dos.property_init(w, &g.mass, "mass") or_return
-        dos.property_init(w, &g.max_hp, "max-hit-points") or_return
-        dos.property_init(w, &g.vision, "vision-range") or_return
-        dos.property_init(w, &g.footsteps, "footstep-sound") or_return
-        dos.flag_init(w, &g.rope, "can-attach-rope") or_return
+        dos.property_init(cfg, &g.mass, "mass") or_return
+        dos.property_init(cfg, &g.max_hp, "max-hit-points") or_return
+        dos.property_init(cfg, &g.vision, "vision-range") or_return
+        dos.property_init(cfg, &g.footsteps, "footstep-sound") or_return
+        dos.property_init(cfg, &g.transform, "transform") or_return
 
-        dos.state_init(w, &g.transform, "transform") or_return
-        dos.state_init(w, &g.velocity, "velocity") or_return
-        dos.state_init(w, &g.health, "health") or_return
-        dos.state_flags_init(w, &g.status, "status") or_return
+        dos.flag_init(cfg, &g.rope, "can-attach-rope") or_return
+        dos.state_flags_init(cfg, &g.status, "status") or_return
+        dos.link_init(cfg, &g.contains, "Contains") or_return
 
-        dos.link_init(w, &g.contains, "Contains") or_return
-
-        // config becomes state at spawn
-        dos.on_spawn(w, proc(w: ^dos.World, obj: dos.object_id) {
-            g := cast(^Game) dos.user_data(w)
-            if hp := dos.resolve(&g.max_hp, obj); hp != nil {
-                dos.add(&g.health, obj, Health{ current = hp.value, max = hp.value })
-            }
-        }) or_return
-
-        dos.effect_register(w, "KnockedOut", dos.Effect{
-            on_attach = proc(w: ^dos.World, obj: dos.object_id) {
-                g := cast(^Game) dos.user_data(w)
-                dos.set(&g.status, obj, Status.Unconscious)
-            },
-            on_detach = proc(w: ^dos.World, obj: dos.object_id) {
-                g := cast(^Game) dos.user_data(w)
-                dos.unset(&g.status, obj, Status.Unconscious)
-            },
-        }) or_return
+        dos.effects_init(cfg, &g.effects) or_return
+        _ = dos.effect_register(&g.effects, "KnockedOut") or_return
 
         return nil
     }

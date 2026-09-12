@@ -1,169 +1,141 @@
 # API
 
-`import dos "ode_dos/src"`. Proc groups are marked with `|` between accepted argument types.
+Everything public, by area. `cfg` is a `^Config`.
 
-## World
-
-```odin
-world_init(w: ^World, cfg := World_Config{}) -> Error
-world_terminate(w: ^World)
-runtime(w: ^World) -> ^ecs.Database
-user_data(w: ^World) -> rawptr
-config_capacity(w: ^World) -> (archetypes: int, attachments: int)
-```
-
-## Config sets
+## Config
 
 ```odin
-create_config_set(w: ^World, name: string) -> (config_set_id, Error)
-find_config_set(w: ^World, name: string) -> (config_set_id, bool)
-config_db(w: ^World, set := CORE) -> ^ecs.Database
-unload_config_set(w: ^World, set: config_set_id) -> Error
+config_init(self: ^Config, opts := Config_Options{}) -> Error
+config_terminate(self: ^Config)
+config_db(self: ^Config) -> ^ecs.Database
+config_capacity(self: ^Config) -> (entities: int, attachments: int)
+user_data(self: ^Config) -> rawptr
+
+Config_Options :: struct {
+    base:        ^Config,
+    max_derived: int,
+    keep_names:  Maybe(bool),
+    user_data:   rawptr,
+    allocator:   rt.Allocator,
+}
 ```
 
 ## Archetypes, metas, surfaces
 
 ```odin
-archetype(w: ^World, name: string, parent := "", set := CORE) -> (archetype_id, Error)
-meta(w: ^World, name: string, set := CORE) -> (meta_id, Error)
-surface(w: ^World, name: string, set := CORE) -> (surface_id, Error)
-find_archetype(w: ^World, name: string) -> (archetype_id, bool)
-find_meta(w: ^World, name: string) -> (meta_id, bool)
-find_surface(w: ^World, name: string) -> (surface_id, bool)
+archetype(cfg, name: string, parent := "") -> (archetype_id, Error)
+meta(cfg, name: string) -> (meta_id, Error)
+surface(cfg, name: string) -> (surface_id, Error)
 
-parent_of(w: ^World, a: archetype_id) -> (archetype_id, bool)
-chain_of(w: ^World, a: archetype_id) -> []archetype_id          // valid until the next chain query
-is_kind_of(w: ^World, a: archetype_id, kind: archetype_id) -> bool
+find_archetype(cfg, name: string) -> (archetype_id, bool)
+find_meta(cfg, name: string) -> (meta_id, bool)
+find_surface(cfg, name: string) -> (surface_id, bool)
+name_of(cfg, id) -> string                        // proc group: archetype, meta, surface, object
 
-attach(w: ^World, holder: archetype_id | surface_id, meta: meta_id, priority := 0) -> Error
-detach(w: ^World, holder: archetype_id | surface_id, meta: meta_id) -> Error
-metas_of(w: ^World, holder: archetype_id | surface_id, allocator := context.temp_allocator) -> []Attachment
+parent_of(cfg, id: archetype_id) -> (archetype_id, bool)
+chain_of(cfg, id: archetype_id) -> []archetype_id
+is_kind_of(cfg, id: archetype_id, kind: archetype_id) -> bool
 
-name_of(w: ^World, id: archetype_id | meta_id | surface_id | object_id) -> string
-bake(w: ^World) -> Error
-```
-
-## Objects
-
-```odin
-spawn(w: ^World, archetype: string | archetype_id) -> (object_id, Error)
-destroy(w: ^World, obj: object_id) -> Error
-alive(w: ^World, obj: object_id) -> bool
-archetype_of(w: ^World, obj: object_id) -> archetype_id
-find(w: ^World, name: string) -> (object_id, bool)
-set_name(w: ^World, obj: object_id, name: string) -> Error
-on_spawn(w: ^World, hook: Spawn_Hook) -> Error          // Spawn_Hook :: proc(w: ^World, obj: object_id)
+attach(cfg, holder, meta: meta_id, priority := 0) -> Error   // proc group: archetype or surface
+detach(cfg, holder, meta: meta_id) -> Error
+metas_of(cfg, holder, allocator := context.temp_allocator) -> []Attachment
+bake(cfg) -> Error
 ```
 
 ## Properties
 
 ```odin
-property_init(w: ^World, c: ^Property($T), name: string, set := CORE, overrides_cap := 0, decode: Decode_Proc = nil) -> Error
-set_property(c: ^Property($T), holder: archetype_id | meta_id | surface_id, value: T) -> Error
-get_property(c: ^Property($T), holder: archetype_id | meta_id | surface_id) -> ^T
-unset_property(c: ^Property($T), holder: archetype_id | meta_id | surface_id) -> Error
-resolve(c: ^Property($T), x: object_id | archetype_id | surface_id) -> ^T
-resolve_with_source(c: ^Property($T), obj: object_id) -> (^T, Value_Source)
-local(c: ^Property($T), obj: object_id) -> ^T
-override(c: ^Property($T), obj: object_id, value: T) -> Error
-clear_override(c: ^Property($T), obj: object_id) -> Error
+property_init(cfg, self: ^Property($T), name: string, decode: Decode_Proc = nil) -> Error
 
-flag_init(w: ^World, f: ^Flag, name: string, set := CORE) -> Error
-set_flag(f: ^Flag, holder: archetype_id | meta_id | surface_id, value: bool) -> Error
-resolve_flag(f: ^Flag, x: object_id | archetype_id) -> bool
-surface_flag(w: ^World, s: surface_id, f: ^Flag) -> bool
+set_property(self: ^Property($T), holder, value: T) -> Error   // archetype, meta, surface or object
+get_property(self: ^Property($T), holder) -> ^T                // authored here only
+unset_property(self: ^Property($T), holder) -> Error
+
+resolve(self: ^Property($T), id) -> ^T                         // object, archetype or surface
+resolve_with_source(self: ^Property($T), obj: object_id) -> (^T, Value_Source)
+source_name(cfg, src: Value_Source) -> string
 ```
 
-## State
+## Flags, state flags and effects
 
 ```odin
-state_init(w: ^World, s: ^State($T), name: string, cap := 0, decode: Decode_Proc = nil) -> Error
-get(s: ^State($T), obj: object_id) -> ^T
-add(s: ^State($T), obj: object_id, value: T) -> Error
-remove(s: ^State($T), obj: object_id) -> Error
-has(s: ^State($T), obj: object_id) -> bool
+flag_init(cfg, self: ^Flag, name: string) -> Error
+set_flag(self: ^Flag, holder, value := true) -> Error
+resolve_flag(self: ^Flag, id) -> bool                          // object, archetype or surface
 
-state_flags_init(w: ^World, s: ^State_Flags($E), name: string, cap := 0) -> Error
-set(s: ^State_Flags($E), obj: object_id, flag: E) -> Error
-unset(s: ^State_Flags($E), obj: object_id, flag: E) -> Error
-is_set(s: ^State_Flags($E), obj: object_id, flag: E) -> bool
-flags_of(s: ^State_Flags($E), obj: object_id) -> bit_set[E]
+state_flags_init(cfg, self: ^State_Flags($E), name: string) -> Error
+set_state_flag(self: ^State_Flags($E), holder, flag: E, value := true) -> Error
+is_state_flag(self: ^State_Flags($E), obj: object_id, flag: E) -> bool
+state_flags_of(self: ^State_Flags($E), obj: object_id) -> bit_set[E]
 
-table(s: ^State($T) | ^State_Flags($E)) -> ^ecs.Table(T) | ^ecs.Flags_Table
+effects_init(cfg, self: ^Effects, cap := 32) -> Error
+effect_register(self: ^Effects, name: string) -> (bit: int, err: Error)
+effect_bit(self: ^Effects, name: string) -> (int, bool)
+effect_name(self: ^Effects, bit: int) -> string
+effect_count(self: ^Effects) -> int
+set_effect(self: ^Effects, holder, name: string, value := true) -> Error
+has_effect(self: ^Effects, obj: object_id, name: string) -> bool
+
+bits_of(self, obj: object_id) -> ecs.Bits    // proc group: State_Flags(E) and Effects
+```
+
+## Objects and queries
+
+```odin
+object(cfg, archetype: archetype_id, name := "") -> (object_id, Error)
+find(cfg, name: string) -> (object_id, bool)
+set_name(cfg, obj: object_id, name: string) -> Error
+archetype_of(cfg, obj: object_id) -> archetype_id
+
+objects(cfg, allocator := context.temp_allocator) -> []object_id
+objects_of(cfg, archetype: archetype_id, allocator := context.temp_allocator) -> []object_id
+changed_objects(cfg, allocator := context.temp_allocator) -> []object_id
+changed_archetypes(cfg, allocator := context.temp_allocator) -> []archetype_id
 ```
 
 ## Links
 
 ```odin
-link_init(w: ^World, l: ^Link($T), name: string, cap := 0, decode: Decode_Proc = nil) -> Error
-link(l: ^Link($T), from, to: object_id, data: T) -> Error
-unlink(l: ^Link($T), from, to: object_id) -> Error
-linked(l: ^Link($T), from, to: object_id) -> bool
-link_data(l: ^Link($T), from, to: object_id) -> (^T, bool)
-first_target(l: ^Link($T), from: object_id) -> (object_id, ^T, bool)
-count_out(l: ^Link($T), from: object_id) -> int
-count_in(l: ^Link($T), to: object_id) -> int
-unlink_all_from(l: ^Link($T), from: object_id) -> Error
-unlink_all_to(l: ^Link($T), to: object_id) -> Error
-outgoing(l: ^Link($T), from: object_id) -> Link_Iterator(T)
-incoming(l: ^Link($T), to: object_id) -> Link_Iterator(T)
+link_init(cfg, self: ^Link($T), name: string, cap := 0, decode: Decode_Proc = nil) -> Error
+link(self: ^Link($T), from, to: object_id, data: T) -> Error
+unlink(self: ^Link($T), from, to: object_id) -> Error
+linked(self: ^Link($T), from, to: object_id) -> bool
+link_data(self: ^Link($T), from, to: object_id) -> (^T, bool)
+first_target(self: ^Link($T), from: object_id) -> (object_id, ^T, bool)
+count_out(self: ^Link($T), from: object_id) -> int
+count_in(self: ^Link($T), to: object_id) -> int
+links_of(self: ^Link($T), from: object_id) -> Link_Iterator(T)
+links_to(self: ^Link($T), to: object_id) -> Link_Iterator(T)
 next(it: ^Link_Iterator($T)) -> (other: object_id, data: ^T, ok: bool)
-link_table(l: ^Link($T)) -> ^ecs.Pair_Table(T)
+link_table(self: ^Link($T)) -> ^ecs.Pair_Table(T)
 ```
 
-## Effects
+## Loading and tooling
 
 ```odin
-effect_register(w: ^World, name: string, effect: Effect) -> Error   // Effect{on_attach, on_detach}
-apply(w: ^World, obj: object_id, name: string) -> Error
-unapply(w: ^World, obj: object_id, name: string) -> Error
-affected(w: ^World, obj: object_id, name: string) -> bool
-effect_term(w: ^World, name: string) -> (ecs.Flags, bool)
-```
-
-## Loading
-
-```odin
-load(w: ^World, path: string, set := CORE) -> Error
-errors(w: ^World) -> []Load_Error
+load(cfg, path: string) -> Error
+errors(cfg) -> []Load_Error
 format_error(e: Load_Error, allocator := context.allocator) -> string
-
-// for decode procs: Decode_Proc :: proc(ctx: ^Decode_Context, node: ^Load_Node, out: rawptr) -> bool
-bind_node(ctx: ^Decode_Context, node: ^Load_Node, ti: ^runtime.Type_Info, out: rawptr) -> bool
-bind_value(ctx: ^Decode_Context, v: Load_Value, ti: ^runtime.Type_Info, out: rawptr) -> bool
 decode_error(ctx: ^Decode_Context, loc: kdl.Location, format: string, args: ..any)
-```
+bind_node(ctx: ^Decode_Context, node: ^Load_Node, ti: ^rt.Type_Info, out: rawptr) -> bool
+bind_value(ctx: ^Decode_Context, v: Load_Value, ti: ^rt.Type_Info, out: rawptr) -> bool
 
-## Save and load
-
-```odin
-save_game(w: ^World, path: string) -> Error
-load_game(w: ^World, path: string) -> Error
-```
-
-## Inspect and tooling
-
-```odin
-dump(w: ^World, obj: object_id, out: io.Writer)
-explain(w: ^World, c: ^Property($T), obj: object_id, out: io.Writer)
-source_name(w: ^World, src: Value_Source) -> string
-cli_run(w: ^World, args: []string, out: io.Writer) -> int
+dump(cfg, obj: object_id, out: io.Writer)
+explain(cfg, property: ^Property($T), obj: object_id, out: io.Writer)
+cli_run(cfg, args: []string, out: io.Writer) -> int
 ```
 
 ## Types and constants
 
 ```odin
-object_id, archetype_id, meta_id, surface_id :: distinct ecs.entity_id
-config_set_id :: distinct int
-CORE          :: config_set_id(0)
-NO_CONFIG_SET :: config_set_id(-1)
-
-Value_Source :: struct { kind: Source_Kind, id: ecs.entity_id }   // Source_Kind: None, Override, Authored, Meta
-Attachment   :: struct { meta: meta_id, priority: i32 }
-Load_Error   :: struct { file: string, line, column, span: int, message, suggestion: string }
-
-DOS_VALIDATIONS (#config, default true)
-DEFAULT_MAX_CONFIG_SETS, DEFAULT_MAX_OBJECTS, DEFAULT_MAX_LINKS, DEFAULT_MAX_NAMED_OBJECTS
-MAX_SPAWN_HOOKS
-CLI_USAGE
+object_id, archetype_id, meta_id, surface_id   // distinct ecs.entity_id
+Config, Config_Options, Config_Kind
+Property($T), Flag, State_Flags($E), Effects, Link($T), Link_Iterator($T), Link_Row
+Attachment :: struct { meta: meta_id, priority: i32 }
+Source_Kind :: enum { None, Override, Authored, Meta }
+Value_Source :: struct { kind: Source_Kind, id: ecs.entity_id }
+Load_Error, Decode_Context, Decode_Proc, Load_Node, Load_Value
+DOS_Error, Error
+FLAGS_PER_GROUP, DEFAULT_EFFECTS_CAP, DEFAULT_MAX_DERIVED, DEFAULT_MAX_LINKS
+VALIDATIONS   // -define:DOS_VALIDATIONS=false to compile the checks out
 ```

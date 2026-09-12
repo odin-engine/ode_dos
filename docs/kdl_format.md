@@ -1,65 +1,74 @@
 # KDL format
 
-ODE_DOS reads [KDL v2](https://kdl.dev). A file is a list of these top-level nodes:
-
-```kdl
-namespace "core"          // optional; names declared below become core.Name
-
-meta "Wooden" priority=0 {
-    can-attach-rope
-    footstep-sound "wood"
-}
-
-archetype "Physical" { mass 10.0 }
-archetype "Creature" parent="Physical" { max-hit-points 100 }
-archetype "Human" parent="Creature" {
-    ai { vision-range 20.0 }
-}
-archetype "Guard" parent="Human" {
-    ai { vision-range 30.0 }
-    meta "Alert" priority=60
-}
-
-surface "WoodPlanks" { meta "Wooden" }
-
-object "Guard01" archetype="Guard" {
-    transform { position 10.0 0.0 4.0 }
-    max-hit-points 75
-    status "Alerted"
-}
-
-link "Contains" from="Guard01" to="Sword01" { slot "RightHand" }
-```
+Everything a designer authors is [KDL](https://kdl.dev). Top-level nodes:
 
 | node | `key=value` | children |
 |---|---|---|
-| `namespace "N"` | | |
-| `archetype "Name"` | `parent="Other"` | property values, flags, `meta` |
-| `meta "Name"` | `priority=N` (default when attached) | property values, flags |
-| `surface "Name"` | | property values, flags, `meta` |
-| `object "Name"` | `archetype="A"` (required) | property overrides, state values, state flags |
-| `link "Flavor"` | `from="Object"`, `to="Object"` | the link's data |
+| `namespace "core"` | — | — (applies to the rest of the file) |
+| `archetype "Name"` | `parent="Other"` | property values, flags, state flags, effects, `meta` |
+| `meta "Name"` | `priority=50` | property values, flags, state flags, effects |
+| `surface "Name"` | — | the same, plus `meta` |
+| `object "Name"` | `archetype="A"` (required) | the same as an archetype, minus `meta` |
+| `link "Flavor"` | `from="A"` `to="B"` | the link's data |
 
-Inside an archetype, meta or surface, `meta "M" priority=N` attaches a meta; without `priority` it uses the meta's own `priority`, else 0.
+```kdl
+namespace "core"
 
-## Names
+meta "Alert" priority=50 {
+    vision-range 45.0
+}
 
-Declared names are prefixed with the file's namespace. A reference (`parent=`, `archetype=`, `meta`, `from=`, `to=`) is looked up as `namespace.Ref` first, then as written, so `parent="Physical"` finds `core.Physical` inside `namespace "core"` and `archetype="core.Guard"` works from any namespace. File order and directory layout never matter.
+archetype "Physical" {
+    mass 10.0
+}
+
+archetype "Guard" parent="Physical" {
+    max-hit-points 100
+    can-attach-rope #false
+    meta "Alert"
+}
+
+surface "WoodPlanks" {
+    meta "Wooden"
+}
+
+object "Guard01" archetype="core.Guard" {
+    max-hit-points 75          // this one is wounded
+    transform { position 10.0 0.0 4.0 }
+    status "Alerted"
+    KnockedOut
+}
+
+link "Contains" from="Guard01" to="Sword01" {
+    slot "RightHand"
+}
+```
 
 ## Values
 
-A child node named after a declared `Property`, `State` or `State_Flags` sets it; the name is exactly the one given to `property_init`, `state_init` or `state_flags_init`.
+A child node names a declared `Property`, `Flag`, `State_Flags` or effect:
 
-- **Property and State values** are read into the Odin type by reflection:
-  - positional arguments fill struct fields in order; a fixed array takes as many arguments as it has elements (`position 10.0 0.0 4.0` into `position: [3]f32`);
-  - `key=value` pairs and child nodes set fields by name, in kebab-case or snake_case, any letter case (`slot "RightHand"` into `slot: Slot`);
-  - enums are read by name, with the same rules (`"RightHand"` matches `Right_Hand`);
-  - integers are range-checked for their Odin type; floats accept integers.
+- a **property** takes whatever its type needs — one argument for a single field, several for a fixed
+  array, `key=value` pairs or child nodes for a struct;
+- a **flag** or an **effect** is the name alone, or the name with `#true` / `#false`;
+- **state flags** take one or more enum-value names: `status "Alerted" "Dead"`.
 
-  A binding can supply its own decode proc for anything else (see [Loading](loading.md#custom-decoders)).
-- **Flags** (`Flag`): the name alone means `#true`, or give `#true` / `#false`.
-- **State flags** (`State_Flags`): one or more enum value names, `status "Alerted" "Burning"`.
+On an object these are the object's own values, which beat everything its archetype says. A node with
+only children and no value of its own is a group, so files can be organized freely:
 
-A node that is not a declared name and has only children, like `ai { ... }`, is a group: its children are read as if they were written directly inside.
+```kdl
+archetype "Guard" parent="Human" {
+    ai {
+        vision-range 30.0
+    }
+}
+```
 
-On an object, a `Property` value is an override, unless the property holds something other than plain data; a `Flag` cannot be set on an object.
+## Names
+
+Names are dotted. `namespace "core"` prefixes every name declared in the rest of the file, and a
+reference is tried first inside the current namespace, then as written. Archetypes, metas and surfaces
+share one namespace; objects have their own.
+
+Enum values match by name, ignoring case, `_` and `-`, so `"RightHand"`, `"right_hand"` and
+`"Right-Hand"` all mean `Right_Hand`.

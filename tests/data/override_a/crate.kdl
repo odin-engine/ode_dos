@@ -1,0 +1,7 @@
+archetype "Crate" {
+    mass 5.0
+}
+
+object "Crate01" archetype="Crate" {
+    mass 3.0
+}

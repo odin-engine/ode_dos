@@ -25,17 +25,17 @@ package ode_dos
   links    <object>          outgoing links`
 
     // Runs one command and returns the process exit code.
-    cli__run :: proc(w: ^World, args: []string, out: io.Writer) -> int {
+    cli__run :: proc(cfg: ^Config, args: []string, out: io.Writer) -> int {
         if len(args) == 0 do return cli__usage(out)
 
         switch args[0] {
         case "validate":
             if len(args) != 2 do return cli__usage(out)
-            err := world__load(w, args[1])
-            for e in world__errors(w) do fmt.wprintln(out, load_error__format(e, context.temp_allocator))
+            err := config__load(cfg, args[1])
+            for e in config__errors(cfg) do fmt.wprintln(out, load_error__format(e, context.temp_allocator))
             if err != nil {
-                if len(world__errors(w)) == 0 do fmt.wprintln(out, err)
-                fmt.wprintf(out, "%d problem(s)\n", max(len(world__errors(w)), 1))
+                if len(config__errors(cfg)) == 0 do fmt.wprintln(out, err)
+                fmt.wprintf(out, "%d problem(s)\n", max(len(config__errors(cfg)), 1))
                 return 1
             }
             fmt.wprintln(out, "ok")
@@ -43,35 +43,35 @@ package ode_dos
 
         case "inspect":
             if len(args) != 2 do return cli__usage(out)
-            obj, ok := cli__object(w, args[1], out)
+            obj, ok := cli__object(cfg, args[1], out)
             if !ok do return 1
-            world__dump(w, obj, out)
+            config__dump(cfg, obj, out)
             return 0
 
         case "resolve":
             if len(args) != 3 do return cli__usage(out)
-            obj, ok := cli__object(w, args[1], out)
+            obj, ok := cli__object(cfg, args[1], out)
             if !ok do return 1
-            b := world__find_binding(w, args[2])
+            b := config__find_binding(cfg, args[2])
             if b == nil || b.kind != .Property {
                 fmt.wprintf(out, "unknown property %q\n", args[2])
                 return 1
             }
-            return world__explain_binding(w, b, obj, out) ? 0 : 1
+            return config__explain_binding(cfg, b, ecs.entity_id(obj), out) ? 0 : 1
 
         case "chain":
             if len(args) != 2 do return cli__usage(out)
-            a, ok := cli__archetype(w, args[1], out)
+            a, ok := cli__archetype(cfg, args[1], out)
             if !ok do return 1
-            world__write_chain(w, a, out)
+            config__write_chain(cfg, a, out)
             fmt.wprintln(out)
             return 0
 
         case "links":
             if len(args) != 2 do return cli__usage(out)
-            obj, ok := cli__object(w, args[1], out)
+            obj, ok := cli__object(cfg, args[1], out)
             if !ok do return 1
-            world__dump_links(w, ecs.entity_id(obj), out)
+            config__dump_links(cfg, ecs.entity_id(obj), out)
             return 0
 
         case "help", "-h", "--help":
@@ -94,20 +94,24 @@ package ode_dos
 
     // By full name, or by the part after the last dot when that is unique.
     @(private)
-    cli__object :: proc(w: ^World, name: string, out: io.Writer) -> (object_id, bool) {
-        if obj, ok := world__find(w, name); ok do return obj, true
-        if full, ok := cli__unique_suffix(w.object_strings, name); ok {
-            if obj, found := world__find(w, full); found do return obj, true
+    cli__object :: proc(cfg: ^Config, name: string, out: io.Writer) -> (object_id, bool) {
+        if obj, ok := config__find_object(cfg, name); ok do return obj, true
+        for c := cfg; c != nil; c = c.base {
+            if full, ok := cli__unique_suffix(c.object_strings, name); ok {
+                if obj, found := config__find_object(cfg, full); found do return obj, true
+            }
         }
         fmt.wprintf(out, "unknown object %q\n", name)
         return {}, false
     }
 
     @(private)
-    cli__archetype :: proc(w: ^World, name: string, out: io.Writer) -> (archetype_id, bool) {
-        if a, ok := world__find_archetype(w, name); ok do return a, true
-        if full, ok := cli__unique_suffix(w.config_strings, name); ok {
-            if a, found := world__find_archetype(w, full); found do return a, true
+    cli__archetype :: proc(cfg: ^Config, name: string, out: io.Writer) -> (archetype_id, bool) {
+        if a, ok := config__find_archetype(cfg, name); ok do return a, true
+        for c := cfg; c != nil; c = c.base {
+            if full, ok := cli__unique_suffix(c.config_strings, name); ok {
+                if a, found := config__find_archetype(cfg, full); found do return a, true
+            }
         }
         fmt.wprintf(out, "unknown archetype %q\n", name)
         return {}, false

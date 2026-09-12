@@ -36,13 +36,13 @@ run :: proc() -> int {
         fmt.eprintln("setup failed:", err)
         return 1
     }
-    defer dos.world_terminate(&g.world)
+    defer dos.config_terminate(&g.cfg)
 
     // validate loads its own path
-    if args[2] != "validate" && dos.load(&g.world, args[1]) != nil {
-        for e in dos.errors(&g.world) do fmt.eprintln(dos.format_error(e, context.temp_allocator))
+    if args[2] != "validate" && dos.load(&g.cfg, args[1]) != nil {
+        for e in dos.errors(&g.cfg) do fmt.eprintln(dos.format_error(e, context.temp_allocator))
         return 1
     }
 
-    return dos.cli_run(&g.world, args[2:], os.to_stream(os.stdout))
+    return dos.cli_run(&g.cfg, args[2:], os.to_stream(os.stdout))
 }

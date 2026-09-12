@@ -24,7 +24,7 @@ package ode_dos
     }
 
     // Problems from the last load; valid until the next load.
-    world__errors :: proc(self: ^World) -> []Load_Error {
+    config__errors :: proc(self: ^Config) -> []Load_Error {
         return self.load_errors[:]
     }
 

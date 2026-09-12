@@ -1,65 +1,68 @@
 # Loading
 
 ```odin
-dos.load(&w, "data/") or_return                   // every .kdl file below data/, into CORE
-dos.load(&w, "data/dlc_weapons/", set = dlc)       // into another config set
-dos.load(&w, "data/core.kdl")                      // one file
+dos.load(&cfg, "data/") or_return       // one .kdl file, or every one below a directory
 ```
 
-`load` reads the files in sorted path order with ODE_KDL's streaming parser, then:
-
-1. collects every declaration;
-2. resolves every name (parents, metas, archetypes, link flavors and endpoints);
-3. checks everything: duplicate names, unknown names, inheritance cycles, the parent-set rule, unknown or mistyped values, bad enum names, out-of-range numbers;
-4. **only if nothing failed**, writes to the World: creates archetypes, metas and surfaces, sets parents, metas and values, bakes, creates objects (overrides, then spawn hooks, then state values from the file), and adds links.
-
-A failed load leaves the World as it was and returns `DOS_Error.Load_Failed`.
-
-## Diagnostics
+A load is one transaction: parse, declare, resolve names, validate, and only then write. If anything
+fails nothing changes, `load` returns `DOS_Error.Load_Failed`, and every problem is in `errors`.
 
 ```odin
-if dos.load(&w, "data/") != nil {
-    for e in dos.errors(&w) do fmt.println(dos.format_error(e))
+if dos.load(&cfg, "data/") != nil {
+    for e in dos.errors(&cfg) do fmt.eprintln(dos.format_error(e, context.temp_allocator))
 }
 ```
 
+Loading bakes at the end, so values resolve as soon as it returns.
+
+## Diagnostics
+
+`Load_Error` carries `file`, `line`, `column`, `span`, `message` and an optional `suggestion`.
+`format_error` renders it with the source line, an underline and the suggestion:
+
 ```
-data/archetypes/guards.kdl:2:24
+data/bad/unknown_parent.kdl:2:24
   archetype "EliteGuard" parent="Humn"
                          ^^^^^^
   unknown archetype "Humn" — did you mean "Human"?
 ```
 
-`Load_Error` has `file`, `line`, `column`, `span`, `message` and `suggestion`. Errors are valid until the next `load`. Suggestions need the name strings, so they cover names from the current load, plus everything else when `keep_names` is on.
+Suggestions come from an edit-distance search over what is declared, so typos in archetype, meta,
+property, flag and enum names all point at the right thing.
 
 ## Hot reload
 
-Loading names that already exist in the same config set updates them: their authored values, metas and parent are replaced by what the file now says, objects that already exist are kept (their values from the file are applied again), and links are linked again. Nothing is deleted: an archetype removed from a file stays until its set is unloaded.
+Loading names that already exist in the same Config updates them: their authored values, metas and
+parent are replaced by what the file now says, and objects keep their ids. Nothing is deleted: an
+archetype removed from a file stays until its Config is terminated.
 
 ```odin
-dos.load(&w, "data/") or_return   // after editing a file
+dos.load(&cfg, "data/") or_return       // after a designer saves
+
+for obj in dos.changed_objects(&cfg) { /* re-read this one and update your entity */ }
+for a in dos.changed_archetypes(&cfg) { /* anything you built from it may differ */ }
 ```
 
-A name that exists in another set, or as another kind, is an error.
-
-A load grows config space by exactly what it adds; see [Config capacity](world.md#config-capacity).
+Both lists are valid until the next load. A name that exists in another Config, or as another kind,
+is an error.
 
 ## Custom decoders
 
-Reflection covers structs, fixed arrays, integers, floats, booleans, strings and enums. For anything else, pass a decode proc to `property_init`, `state_init` or `link_init`:
+By default a value is read by reflection: one argument fills a single field (a fixed array takes
+several), `key=value` pairs and child nodes set fields by name. When a type wants a different shape,
+pass a `decode` proc:
 
 ```odin
-decode_color :: proc(ctx: ^dos.Decode_Context, node: ^dos.Load_Node, out: rawptr) -> bool {
-    c := cast(^Color)out
-    if len(node.args) != 1 {
-        dos.decode_error(ctx, node.location, "color takes one \"#rrggbb\" value")
+dos.property_init(&cfg, &colors, "color", proc(ctx: ^dos.Decode_Context, node: ^dos.Load_Node, out: rawptr) -> bool {
+    c := cast(^Color) out
+    if len(node.args) != 3 {
+        dos.decode_error(ctx, node.location, "color takes r g b")
         return false
     }
-    // ... parse node.args[0].value into c
+    ...
     return true
-}
-
-dos.property_init(&w, &tint, "tint", decode = decode_color) or_return
+})
 ```
 
-`dos.bind_node(ctx, node, type_info_of(T), out)` and `dos.bind_value(ctx, value, type_info_of(T), out)` run the default reflection for parts of a node.
+`dos.bind_node` and `dos.bind_value` are the reflection binder, so a decoder can fall back to it for
+parts it does not want to handle itself.

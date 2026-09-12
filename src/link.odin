@@ -1,8 +1,9 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    Links: typed (source, flavor, destination, data) relations between objects. Each flavor is
-    one ecs.Pair_Table(T) in the runtime database, so destroying an object removes its links.
+    Links: typed (source, flavor, destination, data) relations between designed objects. Each
+    flavor is one ecs.Pair_Table(T) in the Config's Database. They are metadata: a game reads them
+    at load time and builds whatever it needs, which need not be links at all.
 */
 package ode_dos
 
@@ -13,8 +14,8 @@ package ode_dos
 // Link
 
     Link :: struct($T: typeid) {
-        world: ^World,
-        table: ecs.Pair_Table(T),
+        config: ^Config,
+        table:  ecs.Pair_Table(T),
     }
 
     Link_Row :: ecs.pair_row_id
@@ -26,22 +27,28 @@ package ode_dos
         incoming: bool,
     }
 
-    // cap (links of this flavor) defaults to max_links.
-    link__init :: proc(w: ^World, self: ^Link($T), name: string, cap := 0, decode: Decode_Proc = nil) -> Error {
-        when VALIDATIONS do assert(world__is_valid(w) && self != nil)
+    // cap (links of this flavor) defaults to DEFAULT_MAX_LINKS.
+    link__init :: proc(cfg: ^Config, self: ^Link($T), name: string, cap := 0, decode: Decode_Proc = nil) -> Error {
+        when VALIDATIONS do assert(config__is_valid(cfg) && self != nil)
 
-        if world__binding_exists(w, name) do return DOS_Error.Name_Already_Exists
-        if !type_is_pod(type_info_of(T)) do return DOS_Error.Type_Not_POD
-        pairs := cap > 0 ? cap : w.cfg.max_links
-        ecs_err(ecs.pair_init(&self.table, &w.runtime_db, holders_cap = min(w.cfg.max_objects, pairs), pairs_cap = pairs)) or_return
-        self.world = w
+        if config__binding_exists(cfg, name) do return DOS_Error.Name_Already_Exists
+
+        pairs := cap > 0 ? cap : DEFAULT_MAX_LINKS
+        ecs_err(ecs.pair_init(&self.table, &cfg.db, holders_cap = min(cfg.config_cap, pairs), pairs_cap = pairs)) or_return
+        self.config = cfg
+
+        grow :: proc(data: rawptr, cap: int) -> Error {
+            self := cast(^Link(T))data
+            return ecs_err(ecs.grow(&self.table, min(cap, self.table.pairs_cap), self.table.pairs_cap))
+        }
+        config__add_storage(cfg, nil, grow, self) or_return
 
         apply :: proc(data: rawptr, op: Binding_Op, a: ecs.entity_id, b: ecs.entity_id, value: rawptr) -> Error {
             if op != .Link do return nil
             return link__link(cast(^Link(T))data, object_id(a), object_id(b), (cast(^T)value)^)
         }
-        read :: proc(data: rawptr, obj: ecs.entity_id, index: int) -> (value: rawptr, other: ecs.entity_id, source: Value_Source, ok: bool) {
-            it := link__outgoing(cast(^Link(T))data, object_id(obj))
+        read :: proc(data: rawptr, holder: ecs.entity_id, index: int) -> (value: rawptr, other: ecs.entity_id, source: Value_Source, ok: bool) {
+            it := link__outgoing(cast(^Link(T))data, object_id(holder))
             i := 0
             for target, d in link__next(&it) {
                 if i == index do return d, ecs.entity_id(target), {}, true
@@ -49,7 +56,7 @@ package ode_dos
             }
             return nil, {}, {}, false
         }
-        return world__add_binding(w, name, .Link, NO_CONFIG_SET, type_info_of(T), self, apply, decode, read)
+        return config__add_binding(cfg, name, .Link, type_info_of(T), self, 0, apply, decode, read)
     }
 
     // Updates the data when the link already exists.
@@ -90,14 +97,6 @@ package ode_dos
         return ecs.pair_count_to(&self.table, ecs.entity_id(to))
     }
 
-    link__unlink_all_from :: proc(self: ^Link($T), from: object_id) -> Error {
-        return ecs_err(ecs.pair_remove_all(&self.table, ecs.entity_id(from)))
-    }
-
-    link__unlink_all_to :: proc(self: ^Link($T), to: object_id) -> Error {
-        return ecs_err(ecs.pair_remove_all_to(&self.table, ecs.entity_id(to)))
-    }
-
     link__table :: proc(self: ^Link($T)) -> ^ecs.Pair_Table(T) {
         return &self.table
     }
@@ -115,7 +114,7 @@ package ode_dos
         return Link_Iterator(T){ link = self, row = row, ok = ok, incoming = true }
     }
 
-    // The other end and the data; unlinking the current link while iterating is safe.
+    // The other end and the data.
     link__next :: proc(it: ^Link_Iterator($T)) -> (other: object_id, data: ^T, ok: bool) {
         if !it.ok do return {}, nil, false
 

@@ -6,10 +6,13 @@ Properties
   mass               10         [core.Physical]
   max-hit-points     75         [override]
   vision-range       45         [core.Alert]
+  transform          [10, 0, 4] [override]
 
-State
-  transform          [10, 0, 4]
-  health             Health{current = 75, max = 75}
+State flags
+  status             Unconscious
+
+Effects
+  KnockedOut
 
 Links
   Contains → bafford.Sword01  (Right_Hand)

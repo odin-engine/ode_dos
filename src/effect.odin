@@ -1,9 +1,9 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    Runtime effects: named changes applied to objects (KnockedOut, Burning), with Odin hooks for
-    what they do. An applied effect is one bit in a runtime ecs.Flags_Table, so it is saved with
-    the game and usable in views.
+    Effects: named changes a designer can put on an archetype or an object (KnockedOut, Burning).
+    ODE_DOS keeps the names, their bits and what authored them; what an effect does is the game's,
+    which copies the bits into its own ecs.Flags_Table with bits_of.
 */
 package ode_dos
 
@@ -11,93 +11,144 @@ package ode_dos
     import ecs "../../ode_ecs/src"
 
 ///////////////////////////////////////////////////////////////////////////////
-// Effect
+// Effects
 
-    Effect :: struct {
-        on_attach: proc(w: ^World, obj: object_id),
-        on_detach: proc(w: ^World, obj: object_id),
+    Effects :: struct {
+        config: ^Config,
+        group:  ^Flag_Group,
+        first:  int, // its bits are first + effect index
+        cap:    int,
+        used:   int,
     }
 
-    @(private)
-    EFFECTS_PER_TABLE :: 128
+    // Reserves cap bits; every effect registered later takes the next one.
+    effects__init :: proc(cfg: ^Config, self: ^Effects, cap := DEFAULT_EFFECTS_CAP) -> Error {
+        when VALIDATIONS do assert(config__is_valid(cfg) && self != nil)
 
-    @(private)
-    Effect_Entry :: struct {
-        hash:   u64,
-        effect: Effect,
-        table:  ^ecs.Flags_Table,
-        bit:    int,
-    }
-
-    world__effect_register :: proc(self: ^World, name: string, effect: Effect) -> Error {
-        when VALIDATIONS do assert(world__is_valid(self))
-
-        if world__binding_exists(self, name) do return DOS_Error.Name_Already_Exists
-
-        n := len(self.effects)
-        if n % EFFECTS_PER_TABLE == 0 {
-            table := new(ecs.Flags_Table, self.allocator) or_return
-            ecs_err(ecs.flags_table_init(table, &self.runtime_db, self.cfg.max_objects)) or_return
-            _, err := append(&self.effect_tables, table)
-            if err != nil do return err
-        }
-
-        entry := Effect_Entry{
-            hash   = name_hash(name),
-            effect = effect,
-            table  = self.effect_tables[len(self.effect_tables) - 1],
-            bit    = n % EFFECTS_PER_TABLE,
-        }
-        _, err := append(&self.effects, entry)
-        if err != nil do return err
-
-        return world__add_binding(self, name, .Effect)
-    }
-
-    // Runs on_attach; applying an effect the object already has does nothing.
-    world__apply :: proc(self: ^World, obj: object_id, name: string) -> Error {
-        e := world__effect_entry(self, name)
-        if e == nil do return DOS_Error.Name_Not_Found
-
-        eid := ecs.entity_id(obj)
-        if ecs.has_flag(e.table, eid, e.bit) do return nil
-        ecs_err(ecs.flag(e.table, eid, e.bit)) or_return
-        if e.effect.on_attach != nil do e.effect.on_attach(self, obj)
+        n := cap > 0 ? cap : DEFAULT_EFFECTS_CAP
+        group, first := config__reserve_bits(cfg, n) or_return
+        self.config = cfg
+        self.group = group
+        self.first = first
+        self.cap = n
         return nil
     }
 
-    // Runs on_detach; unapplying an effect the object does not have does nothing.
-    world__unapply :: proc(self: ^World, obj: object_id, name: string) -> Error {
-        e := world__effect_entry(self, name)
-        if e == nil do return DOS_Error.Name_Not_Found
+    // The bit the game should use for this effect in its own Flags_Table.
+    effects__register :: proc(self: ^Effects, name: string) -> (bit: int, err: Error) {
+        when VALIDATIONS do assert(self != nil && self.group != nil)
 
-        eid := ecs.entity_id(obj)
-        if !ecs.has_flag(e.table, eid, e.bit) do return nil
-        ecs_err(ecs.unflag(e.table, eid, e.bit)) or_return
-        if e.effect.on_detach != nil do e.effect.on_detach(self, obj)
-        return nil
+        if config__binding_exists(self.config, name) do return 0, DOS_Error.Name_Already_Exists
+        if self.used >= self.cap do return 0, DOS_Error.Out_Of_Flags
+
+        slot := new(Effect_Bit, self.config.allocator) or_return
+        slot.effects = self
+        slot.bit = self.used
+
+        if _, aerr := append(&self.config.effect_slots, slot); aerr != nil {
+            free(slot, self.config.allocator)
+            return 0, aerr
+        }
+        config__add_binding(self.config, name, .Effect, nil, slot, slot.bit, effects__apply, nil, effects__read) or_return
+
+        self.used += 1
+        return slot.bit, nil
     }
 
-    world__affected :: proc(self: ^World, obj: object_id, name: string) -> bool {
-        e := world__effect_entry(self, name)
-        return e != nil && ecs.has_flag(e.table, ecs.entity_id(obj), e.bit)
+    effects__bit :: proc(self: ^Effects, name: string) -> (int, bool) {
+        b := config__find_binding(self.config, name)
+        if b == nil || b.kind != .Effect do return 0, false
+
+        slot := cast(^Effect_Bit)b.data
+        if slot.effects != self do return 0, false
+        return slot.bit, true
     }
 
-    // A view term matching objects with the effect applied.
-    world__effect_term :: proc(self: ^World, name: string) -> (term: ecs.Flags, ok: bool) {
-        e := world__effect_entry(self, name)
-        if e == nil do return {}, false
-        return ecs.flags_term(e.table, ecs.Bits{e.bit}), true
+    effects__name :: proc(self: ^Effects, bit: int) -> string {
+        for c := self.config; c != nil; c = c.base {
+            for b in c.bindings {
+                if b.kind != .Effect do continue
+                slot := cast(^Effect_Bit)b.data
+                if slot.effects == self && slot.bit == bit do return b.name
+            }
+        }
+        return ""
+    }
+
+    effects__count :: proc(self: ^Effects) -> int {
+        return self.used
+    }
+
+///////////////////////////////////////////////////////////////////////////////
+// Authoring
+
+    effects__set_archetype :: proc(self: ^Effects, holder: archetype_id, name: string, value := true) -> Error {
+        return effects__set(self, ecs.entity_id(holder), .Archetype, name, value)
+    }
+
+    effects__set_meta :: proc(self: ^Effects, holder: meta_id, name: string, value := true) -> Error {
+        return effects__set(self, ecs.entity_id(holder), .Meta, name, value)
+    }
+
+    effects__set_surface :: proc(self: ^Effects, holder: surface_id, name: string, value := true) -> Error {
+        return effects__set(self, ecs.entity_id(holder), .Surface, name, value)
+    }
+
+    effects__set_object :: proc(self: ^Effects, holder: object_id, name: string, value := true) -> Error {
+        return effects__set(self, ecs.entity_id(holder), .Object, name, value)
+    }
+
+///////////////////////////////////////////////////////////////////////////////
+// Reading
+
+    effects__has :: proc(self: ^Effects, obj: object_id, name: string) -> bool {
+        bit, ok := effects__bit(self, name)
+        if !ok do return false
+        return (self.first + bit) in flag_group__bits_of(self.group, ecs.entity_id(obj))
+    }
+
+    // The authored effects, indexed by registration order, for your own Flags_Table.
+    effects__bits_of :: proc(self: ^Effects, obj: object_id) -> (res: ecs.Bits) {
+        bits := flag_group__bits_of(self.group, ecs.entity_id(obj))
+        for i in 0..<self.used {
+            if (self.first + i) in bits do res += {i}
+        }
+        return
     }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Private
 
     @(private)
-    world__effect_entry :: proc(self: ^World, name: string) -> ^Effect_Entry {
-        h := name_hash(name)
-        for &e in self.effects {
-            if e.hash == h do return &e
+    effects__set :: proc(self: ^Effects, holder: ecs.entity_id, kind: Config_Kind, name: string, value: bool) -> Error {
+        if !config__config_is(self.config, holder, kind) do return DOS_Error.Wrong_Kind
+
+        bit, ok := effects__bit(self, name)
+        if !ok do return DOS_Error.Name_Not_Found
+        return flag_group__author(self.group, holder, self.first + bit, value)
+    }
+
+    // One binding per effect name, each pointing at its own bit.
+    @(private)
+    Effect_Bit :: struct {
+        effects: ^Effects,
+        bit:     int,
+    }
+
+    @(private)
+    effects__apply :: proc(data: rawptr, op: Binding_Op, a: ecs.entity_id, b: ecs.entity_id, value: rawptr) -> Error {
+        slot := cast(^Effect_Bit)data
+        fx := slot.effects
+        #partial switch op {
+        case .Author:   return flag_group__author(fx.group, a, fx.first + slot.bit, (cast(^bool)value)^)
+        case .Unauthor: flag_group__unauthor(fx.group, a, fx.first + slot.bit)
         }
         return nil
+    }
+
+    @(private)
+    effects__read :: proc(data: rawptr, holder: ecs.entity_id, index: int) -> (value: rawptr, other: ecs.entity_id, source: Value_Source, ok: bool) {
+        slot := cast(^Effect_Bit)data
+        fx := slot.effects
+        return nil, {}, {}, (fx.first + slot.bit) in flag_group__bits_of(fx.group, holder)
     }

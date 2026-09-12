@@ -1,8 +1,9 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    Bake: flattens inheritance and metas into per-archetype and per-surface values, so runtime
-    lookups never walk a chain.
+    Bake: flattens inheritance and metas into per-archetype and per-surface values, so resolving
+    never walks a chain. Objects are not baked: what they author wins, and everything else comes
+    from their archetype's baked value.
 */
 package ode_dos
 
@@ -12,29 +13,33 @@ package ode_dos
 ///////////////////////////////////////////////////////////////////////////////
 // Bake
 
-    // Recomputes every baked value; idempotent, and the hot-reload step after a re-load.
-    world__bake :: proc(self: ^World) -> Error {
-        when VALIDATIONS do assert(world__is_valid(self))
+    // Recomputes every baked value in the whole Config chain; idempotent, and the step after a load.
+    config__bake :: proc(self: ^Config) -> Error {
+        when VALIDATIONS do assert(config__is_valid(self))
 
-        for b in self.bakers do b.bake(self, b.data) or_return
-        for g in self.flag_groups do flag_group__bake(self, g) or_return
+        for c in self.root.chain {
+            for s in c.storages {
+                if s.bake != nil do s.bake(c, s.data) or_return
+            }
+            for g in c.flag_groups do flag_group__bake(g) or_return
+        }
         return nil
     }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Private
 
+    // Everything a Config owns that grows with its Database, and bakes when it holds values.
     @(private)
-    Baker :: struct {
-        bake: proc(w: ^World, data: rawptr) -> Error,
-        grow: proc(data: rawptr, cap: int) -> Error, // the baker's config tables
+    Storage :: struct {
+        bake: proc(cfg: ^Config, data: rawptr) -> Error,
+        grow: proc(data: rawptr, cap: int) -> Error,
         data: rawptr,
-        set:  config_set_id,
     }
 
     @(private)
-    world__add_baker :: proc(self: ^World, bake: proc(w: ^World, data: rawptr) -> Error, grow: proc(data: rawptr, cap: int) -> Error, data: rawptr, set: config_set_id) -> Error {
-        _, err := append(&self.bakers, Baker{ bake = bake, grow = grow, data = data, set = set })
+    config__add_storage :: proc(self: ^Config, bake: proc(cfg: ^Config, data: rawptr) -> Error, grow: proc(data: rawptr, cap: int) -> Error, data: rawptr) -> Error {
+        _, err := append(&self.storages, Storage{ bake = bake, grow = grow, data = data })
         return err
     }
 
@@ -42,7 +47,7 @@ package ode_dos
     // same for each parent up to the root. Surfaces have no parents.
     @(private)
     Source_Iter :: struct {
-        world:     ^World,
+        config:    ^Config,
         cur:       ecs.entity_id,
         kind:      Config_Kind,
         metas:     []Attachment,
@@ -51,8 +56,8 @@ package ode_dos
     }
 
     @(private)
-    source_iter :: proc(w: ^World, holder: ecs.entity_id, kind: Config_Kind) -> Source_Iter {
-        return Source_Iter{ world = w, cur = holder, kind = kind, metas = world__metas_into(w, holder, w.meta_scratch) }
+    source_iter :: proc(cfg: ^Config, holder: ecs.entity_id, kind: Config_Kind) -> Source_Iter {
+        return Source_Iter{ config = cfg, cur = holder, kind = kind, metas = config__metas_into(cfg, holder, cfg.root.meta_scratch) }
     }
 
     @(private)
@@ -70,12 +75,12 @@ package ode_dos
             return src, true
         }
 
-        p, err := ecs.parent_of(world__core_db(it.world), it.cur)
+        p, err := ecs.parent_of(&it.config.root.db, it.cur)
         if err != nil || ecs.is_not_set(p) {
             it.done = true
         } else {
             it.cur = p
-            it.metas = world__metas_into(it.world, p, it.world.meta_scratch)
+            it.metas = config__metas_into(it.config, p, it.config.root.meta_scratch)
             it.next_meta = 0
         }
         return src, true

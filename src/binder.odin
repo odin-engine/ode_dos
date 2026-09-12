@@ -21,7 +21,7 @@ package ode_dos
 
     // Passed to decode procs; report problems with decode_error.
     Decode_Context :: struct {
-        world:  ^World,
+        config: ^Config,
         loader: rawptr,
         file:   int,
     }
@@ -157,7 +157,7 @@ package ode_dos
                 decode_context__error(ctx, v.location, "expected a string for %v", ti)
                 return false
             }
-            (^string)(out)^ = world__intern(ctx.world, s)
+            (^string)(out)^ = config__intern(ctx.config, s)
             return true
 
         case rt.Type_Info_Enum:
@@ -236,9 +236,9 @@ package ode_dos
         }
     }
 
-    // A World-owned copy that lives as long as the World.
+    // A Config-owned copy that lives as long as the Config.
     @(private)
-    world__intern :: proc(self: ^World, s: string) -> string {
+    config__intern :: proc(self: ^Config, s: string) -> string {
         copy := fmt.aprint(s, allocator = self.allocator)
         append(&self.value_strings, copy)
         return copy

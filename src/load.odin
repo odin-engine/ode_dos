@@ -24,19 +24,17 @@ package ode_dos
 ///////////////////////////////////////////////////////////////////////////////
 // Load
 
-    // Loads a .kdl file, or every .kdl file below a directory, into a config set; then bakes and
-    // spawns the declared objects. On failure nothing changes and errors() lists the problems.
-    world__load :: proc(self: ^World, path: string, set := CORE) -> Error {
-        when VALIDATIONS do assert(world__is_valid(self))
+    // Loads a .kdl file, or every .kdl file below a directory, into a Config, then bakes.
+    // On failure nothing changes and errors() lists the problems.
+    config__load :: proc(self: ^Config, path: string) -> Error {
+        when VALIDATIONS do assert(config__is_valid(self))
 
         clear(&self.load_errors)
+        clear(&self.changed)
         virtual.arena_free_all(&self.error_arena)
 
-        if !world__set_is_loaded(self, set) do return DOS_Error.Config_Set_Not_Found
-
         ld: Loader
-        ld.world = self
-        ld.set = set
+        ld.config = self
         if err := virtual.arena_init_growing(&ld.arena); err != nil do return err
         defer virtual.arena_destroy(&ld.arena)
         ld.allocator = virtual.arena_allocator(&ld.arena)
@@ -56,8 +54,7 @@ package ode_dos
 
     @(private)
     Loader :: struct {
-        world:     ^World,
-        set:       config_set_id,
+        config:    ^Config,
         arena:     virtual.Arena,
         allocator: rt.Allocator,
         failed:    bool,
@@ -218,7 +215,7 @@ package ode_dos
 
     @(private)
     loader__declare_config :: proc(ld: ^Loader, node: ^Load_Node, ns: string) {
-        w := ld.world
+        cfg := ld.config
         short, ok := loader__name_arg(ld, node)
         if !ok do return
 
@@ -246,9 +243,9 @@ package ode_dos
             values    = make([dynamic]Staged, 0, 4, ld.allocator),
         }
 
-        if eid, existing_kind, found := world__find_config(w, name); found {
-            if existing_kind != kind || w.config_set_of[eid.ix] != ld.set {
-                loader__error_node(ld, node, "", "%q already exists as a %v in config set %q", name, existing_kind, w.sets[w.config_set_of[eid.ix]].name)
+        if eid, existing_kind, found := config__find_config(cfg, name); found {
+            if existing_kind != kind || config__owner(cfg, eid) != cfg {
+                loader__error_node(ld, node, "", "%q already exists as a %v", name, existing_kind)
                 return
             }
             d.existing = true
@@ -312,7 +309,7 @@ package ode_dos
             return
         }
 
-        if obj, found := world__find(ld.world, name); found {
+        if obj, found := config__find_object(ld.config, name); found {
             o.existing = true
             o.obj = obj
         }
@@ -335,8 +332,6 @@ package ode_dos
                     loader__error_at(ld, d.node, d.parent_loc, len("parent"), loader__suggest_config(ld, d.namespace, d.parent_name, .Archetype), "unknown archetype %q", d.parent_name)
                 case kind != .Archetype:
                     loader__error_at(ld, d.node, d.parent_loc, len("parent"), "", "%q is a %v, not an archetype", d.parent_name, kind)
-                case !loader__parent_allowed(ld, ref):
-                    loader__error_at(ld, d.node, d.parent_loc, len("parent"), "", "%q is in another config set; a parent must be in the same set or in CORE", d.parent_name)
                 case:
                     d.parent = ref
                     d.has_parent = true
@@ -397,24 +392,42 @@ package ode_dos
             return
         }
 
-        b := world__find_binding(ld.world, node.name)
+        loader__value_item(ld, &d.values, node, di, -1)
+    }
+
+    @(private)
+    loader__object_item :: proc(ld: ^Loader, oi: int, node: ^Load_Node) {
+        loader__value_item(ld, &ld.objects[oi].values, node, -1, oi)
+    }
+
+    // A property value, a flag, a state flag or an effect, wherever it is authored.
+    @(private)
+    loader__value_item :: proc(ld: ^Loader, values: ^[dynamic]Staged, node: ^Load_Node, di: int, oi: int) {
+        b := config__find_binding(ld.config, node.name)
         if b == nil {
             if loader__is_group(node) {
-                for c in node.children do loader__config_item(ld, di, c)
+                for c in node.children {
+                    if di >= 0 {
+                        loader__config_item(ld, di, c)
+                    } else {
+                        loader__object_item(ld, oi, c)
+                    }
+                }
                 return
             }
-            loader__error_node(ld, node, loader__suggest_binding(ld, node.name, {.Property, .Flag}), "unknown property %q", node.name)
+            loader__error_node(ld, node, loader__suggest_binding(ld, node.name, {.Property, .Flag, .State_Flags, .Effect}), "unknown value %q", node.name)
             return
         }
 
         #partial switch b.kind {
         case .Property:
-            if value, ok := loader__decode(ld, b, node); ok do append(&d.values, Staged{ binding = b, op = .Author, value = value })
-        case .Flag:
+            if value, ok := loader__decode(ld, b, node); ok do append(values, Staged{ binding = b, op = .Author, value = value })
+
+        case .Flag, .Effect:
             v := new(bool, ld.allocator)
             v^ = true
             if len(node.args) > 1 || len(node.props) > 0 || len(node.children) > 0 {
-                loader__error_node(ld, node, "", "flag %q takes one #true or #false", node.name)
+                loader__error_node(ld, node, "", "%q takes one #true or #false", node.name)
                 return
             }
             if len(node.args) == 1 {
@@ -425,35 +438,8 @@ package ode_dos
                 }
                 v^ = bv
             }
-            append(&d.values, Staged{ binding = b, op = .Author, value = v })
-        case:
-            loader__error_node(ld, node, "", "%q is %v; set it on an object", node.name, b.kind)
-        }
-    }
+            append(values, Staged{ binding = b, op = .Author, value = v })
 
-    @(private)
-    loader__object_item :: proc(ld: ^Loader, oi: int, node: ^Load_Node) {
-        o := &ld.objects[oi]
-
-        b := world__find_binding(ld.world, node.name)
-        if b == nil {
-            if loader__is_group(node) {
-                for c in node.children do loader__object_item(ld, oi, c)
-                return
-            }
-            loader__error_node(ld, node, loader__suggest_binding(ld, node.name, {.Property, .State, .State_Flags}), "unknown value %q", node.name)
-            return
-        }
-
-        #partial switch b.kind {
-        case .Property:
-            if !b.can_override {
-                loader__error_node(ld, node, "", "%q cannot be overridden on an object: its type is not plain data", node.name)
-                return
-            }
-            if value, ok := loader__decode(ld, b, node); ok do append(&o.values, Staged{ binding = b, op = .Override, value = value })
-        case .State:
-            if value, ok := loader__decode(ld, b, node); ok do append(&o.values, Staged{ binding = b, op = .Add, value = value })
         case .State_Flags:
             if len(node.props) > 0 || len(node.children) > 0 {
                 loader__error_node(ld, node, "", "%q takes flag names", node.name)
@@ -476,12 +462,11 @@ package ode_dos
                 }
                 v := new(int, ld.allocator)
                 v^ = bit
-                append(&o.values, Staged{ binding = b, op = .Set_Bit, value = v })
+                append(values, Staged{ binding = b, op = .Author, value = v })
             }
-        case .Flag:
-            loader__error_node(ld, node, "", "%q is a config flag; set it on an archetype", node.name)
+
         case:
-            loader__error_node(ld, node, "", "%q cannot be set on an object", node.name)
+            loader__error_node(ld, node, "", "%q cannot be set here", node.name)
         }
     }
 
@@ -491,7 +476,7 @@ package ode_dos
         name, ok := loader__name_arg(ld, node)
         if !ok do return
 
-        b := world__find_binding(ld.world, name)
+        b := config__find_binding(ld.config, name)
         if b == nil || b.kind != .Link {
             loader__error_at(ld, node, node.args[0].location, len(name) + 2, loader__suggest_binding(ld, name, {.Link}), "unknown link flavor %q", name)
             return
@@ -540,14 +525,14 @@ package ode_dos
             d := &ld.decls[i]
             return d.parent, d.has_parent
         }
-        p, err := ecs.parent_of(world__core_db(ld.world), ref.eid)
+        p, err := ecs.parent_of(&ld.config.root.db, ref.eid)
         if err != nil || ecs.is_not_set(p) do return {}, false
         return Ref{ decl = -1, eid = p }, true
     }
 
     @(private)
     loader__check_cycles :: proc(ld: ^Loader) {
-        limit := len(ld.decls) + ld.world.config_cap + 1
+        limit := len(ld.decls) + ld.config.config_cap + 1
         for d, i in ld.decls {
             if !d.has_parent do continue
             cur := d.parent
@@ -568,47 +553,48 @@ package ode_dos
 
     @(private)
     loader__commit :: proc(ld: ^Loader) -> Error {
-        w := ld.world
-        core := world__core_db(w)
+        cfg := ld.config
+        core := &cfg.root.db
 
         entities, attachments := loader__measure(ld)
-        world__grow_config(w, entities, attachments) or_return
+        config__grow(cfg, entities, attachments) or_return
 
-        // entities; reloaded ones start over
+        // config entities; reloaded ones start over
         for &d in ld.decls {
             if d.existing {
-                for &b in w.bindings {
-                    if (b.kind == .Property || b.kind == .Flag) && b.apply != nil do b.apply(b.data, .Unauthor, d.eid, {}, nil) or_return
-                }
-                if ecs.pair_count_of(&w.attachments, d.eid) > 0 do ecs_err(ecs.pair_remove_all(&w.attachments, d.eid)) or_return
+                loader__unauthor(ld, d.eid) or_return
+                if ecs.pair_count_of(&cfg.root.attachments, d.eid) > 0 do ecs_err(ecs.pair_remove_all(&cfg.root.attachments, d.eid)) or_return
                 if d.kind == .Archetype do _ = ecs.remove_parent(core, d.eid)
             } else {
-                d.eid = world__create_config(w, d.name, d.kind, ld.set) or_return
+                d.eid = config__create(cfg, d.name, d.kind) or_return
             }
-            if d.kind == .Meta do w.meta_priority[d.eid.ix] = d.priority
+            if d.kind == .Meta do cfg.meta_priority[d.eid.ix] = d.priority
+            append(&cfg.changed, d.eid)
         }
 
         for d in ld.decls {
             if d.has_parent do ecs_err(ecs.set_parent(core, d.eid, loader__ref_eid(ld, d.parent))) or_return
-            for m in d.metas do world__attach(w, d.eid, d.kind, meta_id(loader__ref_eid(ld, m.ref)), int(m.priority)) or_return
+            for m in d.metas do config__attach(cfg, d.eid, d.kind, meta_id(loader__ref_eid(ld, m.ref)), int(m.priority)) or_return
             for v in d.values do v.binding.apply(v.binding.data, v.op, d.eid, {}, v.value) or_return
         }
 
-        // spawn hooks see baked values and the object's overrides
-        world__bake(w) or_return
-
+        // designed objects
         for &o in ld.objects {
-            if !o.existing {
-                o.obj = world__create_object(w, archetype_id(loader__ref_eid(ld, o.archetype))) or_return
-                world__set_object_name(w, o.obj, o.name) or_return
+            eid: ecs.entity_id
+            if o.existing {
+                eid = ecs.entity_id(o.obj)
+                loader__unauthor(ld, eid) or_return
+            } else {
+                eid = config__create(cfg, o.name, .Object) or_return
+                o.obj = object_id(eid)
             }
-            for v in o.values {
-                if v.op == .Override do v.binding.apply(v.binding.data, v.op, ecs.entity_id(o.obj), {}, v.value) or_return
-            }
-            if !o.existing do world__run_spawn_hooks(w, o.obj)
-            for v in o.values {
-                if v.op != .Override do v.binding.apply(v.binding.data, v.op, ecs.entity_id(o.obj), {}, v.value) or_return
-            }
+
+            a, aerr := ecs.add_component(&cfg.root.archetype_table, eid)
+            if a == nil do return ecs_err(aerr)
+            a^ = archetype_id(loader__ref_eid(ld, o.archetype))
+
+            for v in o.values do v.binding.apply(v.binding.data, v.op, eid, {}, v.value) or_return
+            append(&cfg.changed, eid)
         }
 
         for l in ld.links {
@@ -616,19 +602,34 @@ package ode_dos
             l.binding.apply(l.binding.data, .Link, ecs.entity_id(from), ecs.entity_id(to), l.value) or_return
         }
 
+        return config__bake(cfg)
+    }
+
+    // Everything a reload replaces on a config entity or an object.
+    @(private)
+    loader__unauthor :: proc(ld: ^Loader, eid: ecs.entity_id) -> Error {
+        for c := ld.config; c != nil; c = c.base {
+            for &b in c.bindings {
+                if b.apply == nil do continue
+                #partial switch b.kind {
+                case .Property, .Flag, .State_Flags, .Effect:
+                    b.apply(b.data, .Unauthor, eid, {}, nil) or_return
+                }
+            }
+        }
         return nil
     }
 
     // Config entities and attachments after this load; new entities reuse freed ids first.
     @(private)
     loader__measure :: proc(ld: ^Loader) -> (entities: int, attachments: int) {
-        w := ld.world
+        cfg := ld.config
         added := 0
-        attachments = ecs.pair_len(&w.attachments)
+        attachments = ecs.pair_len(&cfg.root.attachments)
 
         for d in ld.decls {
             if d.existing {
-                attachments -= ecs.pair_count_of(&w.attachments, d.eid)
+                attachments -= ecs.pair_count_of(&cfg.root.attachments, d.eid)
             } else {
                 added += 1
             }
@@ -636,8 +637,11 @@ package ode_dos
                 if !loader__meta_repeated(d.metas[:i], m.ref) do attachments += 1
             }
         }
+        for o in ld.objects {
+            if !o.existing do added += 1
+        }
 
-        f := &w.config_overbase.id_factory
+        f := &cfg.root.overbase.id_factory
         entities = f.created_count + max(0, added - f.freed_count)
         return
     }
@@ -656,8 +660,8 @@ package ode_dos
     @(private)
     loader__report :: proc(ld: ^Loader, file: string, loc: kdl.Location, span: int, suggestion: string, format: string, args: ..any) {
         ld.failed = true
-        a := virtual.arena_allocator(&ld.world.error_arena)
-        append(&ld.world.load_errors, Load_Error{
+        a := virtual.arena_allocator(&ld.config.error_arena)
+        append(&ld.config.load_errors, Load_Error{
             file       = strings.clone(file, a),
             line       = loc.line,
             column     = loc.column,
@@ -719,7 +723,7 @@ package ode_dos
         candidates := [2]string{ loader__qualify(ld, ns, name), name }
         for c in candidates {
             if i, in_load := ld.decl_by_name[c]; in_load do return Ref{ decl = i, eid = ld.decls[i].eid }, ld.decls[i].kind, true
-            if eid, kind, found := world__find_config(ld.world, c); found do return Ref{ decl = -1, eid = eid }, kind, true
+            if eid, kind, found := config__find_config(ld.config, c); found do return Ref{ decl = -1, eid = eid }, kind, true
         }
         return {}, .None, false
     }
@@ -729,22 +733,15 @@ package ode_dos
         candidates := [2]string{ loader__qualify(ld, ns, name), name }
         for c in candidates {
             if i, in_load := ld.object_by_name[c]; in_load do return Obj_Ref{ decl = i }, true
-            if obj, found := world__find(ld.world, c); found do return Obj_Ref{ decl = -1, obj = obj }, true
+            if obj, found := config__find_object(ld.config, c); found do return Obj_Ref{ decl = -1, obj = obj }, true
         }
         return {}, false
     }
 
     @(private)
-    loader__parent_allowed :: proc(ld: ^Loader, ref: Ref) -> bool {
-        if ref.decl >= 0 do return true
-        ps := ld.world.config_set_of[ref.eid.ix]
-        return ps == ld.set || ps == CORE
-    }
-
-    @(private)
     loader__meta_priority :: proc(ld: ^Loader, ref: Ref) -> i32 {
         if ref.decl >= 0 do return ld.decls[ref.decl].priority
-        return ld.world.meta_priority[ref.eid.ix]
+        return config__meta_priority_of(ld.config, ref.eid)
     }
 
     @(private)
@@ -767,10 +764,10 @@ package ode_dos
         }
         out := raw_data(data)
 
-        ctx := Decode_Context{ world = ld.world, loader = ld, file = node.file }
-        before := len(ld.world.load_errors)
+        ctx := Decode_Context{ config = ld.config, loader = ld, file = node.file }
+        before := len(ld.config.load_errors)
         ok := b.decode != nil ? b.decode(&ctx, node, out) : binder__bind_node(&ctx, node, b.type_info, out)
-        if !ok && len(ld.world.load_errors) == before do loader__error_node(ld, node, "", "cannot read %q", node.name)
+        if !ok && len(ld.config.load_errors) == before do loader__error_node(ld, node, "", "cannot read %q", node.name)
         return out, ok
     }
 
@@ -787,9 +784,11 @@ package ode_dos
         for d in ld.decls {
             if d.kind == kind do append(&candidates, loader__shorten(ns, d.name))
         }
-        for k, ix in ld.world.config_kind {
-            if k != kind do continue
-            if n := world__config_name(ld.world, ld.world.config_eid[ix]); n != "" do append(&candidates, loader__shorten(ns, n))
+        for c := ld.config; c != nil; c = c.base {
+            for k, ix in c.config_kind {
+                if k != kind do continue
+                if n := config__name_of(c, c.config_eid[ix]); n != "" do append(&candidates, loader__shorten(ns, n))
+            }
         }
         return suggest(name, candidates[:])
     }
@@ -804,8 +803,10 @@ package ode_dos
     @(private)
     loader__suggest_binding :: proc(ld: ^Loader, name: string, kinds: bit_set[Binding_Kind]) -> string {
         candidates := make([dynamic]string, 0, 32, context.temp_allocator)
-        for b in ld.world.bindings {
-            if b.kind in kinds do append(&candidates, b.name)
+        for c := ld.config; c != nil; c = c.base {
+            for b in c.bindings {
+                if b.kind in kinds do append(&candidates, b.name)
+            }
         }
         return suggest(name, candidates[:])
     }
