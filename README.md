@@ -8,7 +8,7 @@ ODE_DOS is based on Marc "MAHK" LeBlanc's GDC talk ["Game Entities in Thief: The
 ODE_DOS describes what designers author; your runtime stays yours:
 
 - **Config** is everything designers author, loaded from KDL and baked: archetypes, metas, surfaces, properties, flags and the objects themselves.
-- **Runtime** is your own ODE_ECS Database, or any data structure you build from Reflection. ODE_DOS never writes to it and never sees your entity ids.
+- **Runtime** is your own ODE_ECS Database, or any data structure you build from Config. ODE_DOS never writes to it and never sees your entity ids.
 
 ODE_DOS supports all "primitives" mentioned in the talk:
 
