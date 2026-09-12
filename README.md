@@ -7,22 +7,6 @@ ODE_DOS is based on Marc "MAHK" LeBlanc's GDC talk ["Game Entities in Thief: The
 
 Instead of building everything in an editor and saving the game's configuration in binary files, as Thief's designers did with DromEd, you describe it in KDL (https://kdl.dev) text files, a human-friendly document language that is cleaner than JSON. Because the files are plain text, designers can keep them in Git and diff, review and merge each other's changes.
 
-ODE_DOS answers *"what is this thing?"*; ODE_ECS answers *"what do all these things do this frame?"*. Inheritance is flattened once by `bake`, so gameplay reads configuration with O(1) lookups and iterates runtime state with plain ODE_ECS views or groups.
-
->NOTE: The project is in beta. Everything has been tested and is working, but it will be polished over the coming months.
-
-## Features
-- The game world has two spaces: config (archetypes, metas, surfaces) and runtime (objects).
-- Load archetypes, metas, surfaces, objects and links from [KDL](https://kdl.dev) files, with
-  `file:line:column` diagnostics and hot reload.
-- Archetypes, metas and surfaces are made of properties (components in config space): each is a bare
-  ODE_ECS entity, and what it "is" comes from the property and flag rows attached to it.
-- `bake` flattens inheritance into one value per archetype; `spawn` creates objects, which you run
-  with ODE_ECS as usual.
-- Config space sizes itself: each load grows it to exactly what the KDL files declare.
-- Typed ids, typed links that snap automatically, effects, and save/load of runtime state.
-- Check your KDL files with a tool built on `cli_run` (see `samples/dos_tool`).
-
 ## Install
 
 Clone the three repositories side by side in a `vendor/` folder inside your project, and import `vendor/ode_dos/src`:
