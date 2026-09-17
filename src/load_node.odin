@@ -2,7 +2,7 @@
     2026 (c) Oleh, https://github.com/zm69
 
     KDL input as compact node records, parsed with ODE_KDL's streaming pull parser. Records and
-    their strings live in the load's arena.
+    their strings live in the Config's arena, so a value can still be read long after the load.
 */
 package ode_dos
 
@@ -64,7 +64,7 @@ package ode_dos
         defer kdl.destroy(&parser)
 
         stack := make([dynamic]Node_Builder, 0, 16, ld.allocator)
-        top := make([dynamic]^Load_Node, 0, 32, ld.allocator)
+        top := make([dynamic]^Load_Node, 0, 32, ld.persist)
 
         for {
             ev := kdl.next_event(&parser)
@@ -78,26 +78,26 @@ package ode_dos
                 return nil, false
 
             case .Start_Node:
-                n := new(Load_Node, ld.allocator)
-                n.name = strings.clone(ev.name, ld.allocator)
+                n := new(Load_Node, ld.persist)
+                n.name = strings.clone(ev.name, ld.persist)
                 n.location = ev.location
                 n.file = file
                 append(&stack, Node_Builder{
                     node     = n,
-                    args     = make([dynamic]Load_Value, 0, 4, ld.allocator),
-                    props    = make([dynamic]Load_Property, 0, 2, ld.allocator),
-                    children = make([dynamic]^Load_Node, 0, 4, ld.allocator),
+                    args     = make([dynamic]Load_Value, 0, 4, ld.persist),
+                    props    = make([dynamic]Load_Property, 0, 2, ld.persist),
+                    children = make([dynamic]^Load_Node, 0, 4, ld.persist),
                 })
 
             case .Argument:
                 b := &stack[len(stack) - 1]
-                append(&b.args, Load_Value{ value = load__clone_value(ev.value, ld.allocator), location = ev.location })
+                append(&b.args, Load_Value{ value = load__clone_value(ev.value, ld.persist), location = ev.location })
 
             case .Property:
                 b := &stack[len(stack) - 1]
                 append(&b.props, Load_Property{
-                    name     = strings.clone(ev.name, ld.allocator),
-                    value    = load__clone_value(ev.value, ld.allocator),
+                    name     = strings.clone(ev.name, ld.persist),
+                    value    = load__clone_value(ev.value, ld.persist),
                     location = ev.location,
                 })
 

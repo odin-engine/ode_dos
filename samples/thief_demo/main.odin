@@ -1,8 +1,8 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    The Thief demo: load KDL, read what designers authored through Reflection, build a plain
-    ODE_ECS world out of it, run a frame loop, and save that world with ODE_ECS.
+    The Thief demo: load KDL, read what designers authored, build a plain ODE_ECS world out of it,
+    run a frame loop, and save that world with ODE_ECS.
 */
 package thief_demo
 
@@ -18,17 +18,16 @@ package thief_demo
 ///////////////////////////////////////////////////////////////////////////////
 // The game's own runtime, which ODE_DOS never touches
 
-    Health   :: struct { current, max: int }
-    Position :: struct { v: [3]f32 }
-    Velocity :: struct { v: [3]f32 }
+    Of_Config :: struct { obj: dos.object_id } // what this entity was built from
 
     World :: struct {
         db:         ecs.Database,
-        healths:    ecs.Table(Health),
-        positions:  ecs.Table(Position),
-        velocities: ecs.Table(Velocity),
+        healths:    ecs.Table(game.Health),
+        masses:     ecs.Table(game.Mass),
+        positions:  ecs.Table(game.Transform),
+        velocities: ecs.Table(game.Velocity),
+        sources:    ecs.Table(Of_Config),
         statuses:   ecs.Flags_Table,
-        effects:    ecs.Flags_Table,
         of_object:  map[dos.object_id]ecs.entity_id,
     }
 
@@ -47,29 +46,38 @@ main :: proc() {
     }
 
     out := os.to_stream(os.stdout)
-
     guard, found := dos.find(cfg, "bafford.Guard01")
     if !found do return
 
-    fmt.println("mass:", dos.resolve(&g.mass, guard).value)         // 10 from core.Physical
-    fmt.println("hit points:", dos.resolve(&g.max_hp, guard).value) // 75, the object's own value
-    dos.explain(cfg, &g.vision, guard, out)                           // 45 from the core.Alert meta
+    // what the designers said about this object
+    mass, _ := dos.value(cfg, guard, "mass")
+    m, _ := dos.as_float(mass)
+    fmt.println("mass:", m)                      // 10, inherited from core.Physical
+    dos.explain(cfg, guard, "vision-range", out) // 45, from the core.Alert meta
 
     planks, _ := dos.find_surface(cfg, "core.WoodPlanks")
-    fmt.println("rope sticks to planks:", dos.resolve_flag(&g.rope, planks))
-
-    it := dos.links_of(&g.contains, guard)
-    for target, data in dos.next(&it) {
-        fmt.println("carrying", dos.name_of(cfg, target), "in", data.slot)
+    fmt.println("rope sticks to planks:", dos.has(cfg, planks, "can-attach-rope"))
+    if sound, has := dos.value(cfg, planks, "footstep-sound"); has {
+        name, _ := dos.as_string(sound)
+        fmt.println("footsteps on planks:", name)
     }
 
-    // build the running game out of what the designers authored
+    for l in dos.links_of(cfg, guard) {
+        data: game.Contains
+        dos.read_node(cfg, l.data, &data)
+        fmt.println("carrying", dos.name_of(cfg, l.to), "in", data.slot)
+    }
+
+    // build the running game out of it
     w: World
     defer world_terminate(&w)
-    if build(&w, &g) != nil {
+    if build(&w, cfg) != nil {
         fmt.eprintln("cannot build the world")
         return
     }
+
+    // anything the files author but nothing reads is probably a typo
+    for e in dos.unread(cfg) do fmt.eprintln("unused:", dos.format_error(e, context.temp_allocator))
 
     e := w.of_object[guard]
     fmt.println("health:", ecs.get_component(&w.healths, e).current)
@@ -77,63 +85,91 @@ main :: proc() {
 
     // frame loop: plain ODE_ECS
     c, _ := ecs.add_component(&w.velocities, e)
-    c^ = Velocity{ v = { 1, 0, 0 } }
+    c^ = game.Velocity{ v = { 1, 0, 0 } }
 
     moving: ecs.View
     if ecs.view_init(&moving, &w.db, {&w.positions, &w.velocities}) != nil do return
     ecs.rebuild(&moving)
 
     for _ in 0..<3 {
-        positions := ecs.slice(&moving, Position)
-        velocities := ecs.slice(&moving, Velocity)
-        for i in 0..<len(positions) do positions[i].v += velocities[i].v
+        positions := ecs.slice(&moving, game.Transform)
+        velocities := ecs.slice(&moving, game.Velocity)
+        for i in 0..<len(positions) do positions[i].position += velocities[i].v
     }
-    fmt.println("position:", ecs.get_component(&w.positions, e).v)
+    fmt.println("position:", ecs.get_component(&w.positions, e).position)
 
     // saving the game is plain ODE_ECS too
     if err := ecs.save_to_file(&w.db, "out/save01.bin"); err != nil {
         fmt.eprintln("save failed:", err)
         return
     }
-    ecs.get_component(&w.positions, e).v = {}
+    ecs.get_component(&w.positions, e).position = {}
     if err := ecs.load_from_file(&w.db, "out/save01.bin"); err != nil {
         fmt.eprintln("load failed:", err)
         return
     }
-    fmt.println("after load:", ecs.get_component(&w.positions, e).v)
+    fmt.println("after load:", ecs.get_component(&w.positions, e).position)
 
     fmt.println()
     dos.dump(cfg, guard, out)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Building the runtime from Reflection
+// Building the runtime from what the Config describes
 
-build :: proc(w: ^World, g: ^game.Game) -> ecs.Error {
+build :: proc(w: ^World, cfg: ^dos.Config) -> ecs.Error {
     ecs.init(&w.db, 4096) or_return
     ecs.table_init(&w.healths, &w.db, 4096) or_return
+    ecs.table_init(&w.masses, &w.db, 4096) or_return
     ecs.table_init(&w.positions, &w.db, 4096) or_return
     ecs.table_init(&w.velocities, &w.db, 4096) or_return
+    ecs.table_init(&w.sources, &w.db, 4096) or_return
     ecs.flags_table_init(&w.statuses, &w.db, 4096) or_return
-    ecs.flags_table_init(&w.effects, &w.db, 4096) or_return
     w.of_object = make(map[dos.object_id]ecs.entity_id)
 
-    for obj in dos.objects(&g.cfg) {
+    for obj in dos.objects(cfg) {
         e := ecs.create_entity(&w.db) or_return
         w.of_object[obj] = e
 
-        if hp := dos.resolve(&g.max_hp, obj); hp != nil {
+        src := ecs.add_component(&w.sources, e) or_return
+        src^ = Of_Config{ obj }
+
+        if v, has := dos.value(cfg, obj, "max-hit-points"); has {
+            hp, _ := dos.as_int(v)
             c := ecs.add_component(&w.healths, e) or_return
-            c^ = Health{ current = hp.value, max = hp.value }
+            c^ = game.Health{ current = int(hp), max = int(hp) }
         }
-        if p := dos.resolve(&g.transform, obj); p != nil {
+
+        mass: game.Mass
+        if dos.read(cfg, obj, "mass", &mass) {
+            c := ecs.add_component(&w.masses, e) or_return
+            c^ = mass
+        }
+
+        transform: game.Transform
+        if dos.read(cfg, obj, "transform", &transform) {
             c := ecs.add_component(&w.positions, e) or_return
-            c^ = Position{ v = p.position }
+            c^ = transform
         }
-        ecs.set_flags(&w.statuses, e, dos.bits_of(&g.status, obj)) or_return
-        ecs.set_flags(&w.effects, e, dos.bits_of(&g.effects, obj)) or_return
+
+        for a in dos.args(cfg, obj, "status") {
+            name, _ := dos.as_string(a)
+            for v in game.Status {
+                if name == status_name(v) do ecs.flag(&w.statuses, e, v) or_return
+            }
+        }
     }
     return nil
+}
+
+status_name :: proc(v: game.Status) -> string {
+    switch v {
+    case .Dead:        return "Dead"
+    case .Unconscious: return "Unconscious"
+    case .Alerted:     return "Alerted"
+    case .Burning:     return "Burning"
+    }
+    return ""
 }
 
 world_terminate :: proc(w: ^World) {

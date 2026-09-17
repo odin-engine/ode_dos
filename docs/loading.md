@@ -15,6 +15,16 @@ if dos.load(&cfg, "data/") != nil {
 
 Loading bakes at the end, so values resolve as soon as it returns.
 
+## What is checked, and when
+
+Because nothing is declared in code, a load can only check what the files say about each other:
+unknown or non-archetype parents, an object without an `archetype=`, names declared twice, metas on
+metas, inheritance cycles, link endpoints, unknown top-level nodes, and KDL syntax.
+
+Whether a value is the right *shape* is decided when the game reads it: `read` returns `false` and
+records the problem, with the location it was authored at, in the same `errors` list. Names nothing
+reads are found with [`unread`](values.md#what-nothing-reads).
+
 ## Diagnostics
 
 `Load_Error` carries `file`, `line`, `column`, `span`, `message` and an optional `suggestion`.
@@ -27,14 +37,14 @@ data/bad/unknown_parent.kdl:2:24
   unknown archetype "Humn" — did you mean "Human"?
 ```
 
-Suggestions come from an edit-distance search over what is declared, so typos in archetype, meta,
-property, flag and enum names all point at the right thing.
+Suggestions come from an edit-distance search over what is declared, so typos in archetype, meta and
+enum names point at the right thing.
 
 ## Hot reload
 
-Loading names that already exist in the same Config updates them: their authored values, metas and
-parent are replaced by what the file now says, and objects keep their ids. Nothing is deleted: an
-archetype removed from a file stays until its Config is terminated.
+Loading names that already exist in the same Config updates them: their values, metas, parent and
+links are replaced by what the files now say, and their ids stay the same. Nothing is deleted: an
+archetype removed from a file stays until the Config is terminated.
 
 ```odin
 dos.load(&cfg, "data/") or_return       // after a designer saves
@@ -43,26 +53,4 @@ for obj in dos.changed_objects(&cfg) { /* re-read this one and update your entit
 for a in dos.changed_archetypes(&cfg) { /* anything you built from it may differ */ }
 ```
 
-Both lists are valid until the next load. A name that exists in another Config, or as another kind,
-is an error.
-
-## Custom decoders
-
-By default a value is read by reflection: one argument fills a single field (a fixed array takes
-several), `key=value` pairs and child nodes set fields by name. When a type wants a different shape,
-pass a `decode` proc:
-
-```odin
-dos.property_init(&cfg, &colors, "color", proc(ctx: ^dos.Decode_Context, node: ^dos.Load_Node, out: rawptr) -> bool {
-    c := cast(^Color) out
-    if len(node.args) != 3 {
-        dos.decode_error(ctx, node.location, "color takes r g b")
-        return false
-    }
-    ...
-    return true
-})
-```
-
-`dos.bind_node` and `dos.bind_value` are the reflection binder, so a decoder can fall back to it for
-parts it does not want to handle itself.
+Both lists are valid until the next load. A name that exists as another kind is an error.

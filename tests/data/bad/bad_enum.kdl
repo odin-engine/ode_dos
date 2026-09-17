@@ -1,5 +1,0 @@
-archetype "A"
-
-object "O" archetype="A" {
-    status "Sleeping"
-}

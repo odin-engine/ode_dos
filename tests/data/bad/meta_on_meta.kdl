@@ -1,0 +1,4 @@
+meta "A"
+meta "B" {
+    meta "A"
+}

@@ -1,43 +1,30 @@
 # Links
 
-A **`Link(T)`** is a typed relation between designed objects: `(from, flavor, to, data)`. Each flavor
-is one `ecs.Pair_Table(T)` in the Config's Database.
+A link is a typed relation a designer wires between two objects: `(from, flavor, to, data)`.
 
-```odin
-Contains :: struct { slot: Slot }
-
-contains: dos.Link(Contains)
-dos.link_init(&cfg, &contains, "Contains", cap = 8192) or_return
+```kdl
+link "Contains" from="Guard01" to="Sword01" {
+    slot "RightHand"
+}
 ```
 
-`cap` bounds the links of this flavor and defaults to 32,768.
-
-## Linking
+## Reading them
 
 ```odin
-dos.link(&contains, guard01, sword01, Contains{ .Right_Hand })  // updates the data if it exists
-dos.unlink(&contains, guard01, sword01)
-dos.linked(&contains, guard01, sword01)                         // bool
-dos.link_data(&contains, guard01, sword01)                      // (^Contains, bool)
-dos.count_out(&contains, guard01)
-dos.count_in(&contains, sword01)
-```
+for l in dos.links_of(&cfg, guard01) {      // outgoing
+    fmt.println(l.flavor, dos.name_of(&cfg, l.to))
 
-## Iterating
-
-Both directions, with the other end and the data:
-
-```odin
-it := dos.links_of(&contains, guard01)     // outgoing
-for target, data in dos.next(&it) {
-    fmt.println(dos.name_of(&cfg, target), data.slot)
+    data: Contains
+    dos.read_node(&cfg, l.data, &data)      // the link's own values
 }
 
-back := dos.links_to(&contains, sword01)   // incoming
-for holder, data in dos.next(&back) { ... }
+for l in dos.links_to(&cfg, sword01) { … }  // incoming
+
+node, ok := dos.link_data(&cfg, guard01, sword01, "Contains")
 ```
 
-`dos.link_table(&contains)` hands out the `ecs.Pair_Table(T)` if you want ODE_ECS directly.
+`Link` is `{ flavor: string, from, to: object_id, data: ^Load_Node }`, and both listing procedures
+return a fresh slice from `context.temp_allocator` unless you pass an allocator.
 
 ## They are metadata
 

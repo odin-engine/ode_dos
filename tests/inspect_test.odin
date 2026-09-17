@@ -19,17 +19,17 @@ package ode_dos__tests
 
     @(test)
     inspect__dump__test :: proc(t: ^testing.T) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil)
+        defer dos.config_terminate(&cfg)
+        testing.expect(t, dos.load(&cfg, "data/ok") == nil)
 
-        testing.expect(t, dos.load(&g.cfg, "data/ok") == nil)
-        g01, found := dos.find(&g.cfg, "bafford.Guard01")
+        g01, found := dos.find(&cfg, "bafford.Guard01")
         testing.expect(t, found)
         if !found do return
 
         b := strings.builder_make(context.temp_allocator)
-        dos.dump(&g.cfg, g01, strings.to_writer(&b))
+        dos.dump(&cfg, g01, strings.to_writer(&b))
         text := strings.to_string(b)
 
         for want in ([]string{
@@ -40,8 +40,8 @@ package ode_dos__tests
             "[core.Physical]",
             "[override]",
             "[core.Alert]",
-            "Alerted",
-            "Contains → bafford.Sword01  (Right_Hand)",
+            "Alerted Dead",
+            "Contains → bafford.Sword01",
         }) {
             testing.expectf(t, strings.contains(text, want), "dump lacks %q:\n%s", want, text)
         }
@@ -49,38 +49,38 @@ package ode_dos__tests
 
     @(test)
     inspect__explain_and_cli__test :: proc(t: ^testing.T) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil)
+        defer dos.config_terminate(&cfg)
+        testing.expect(t, dos.load(&cfg, "data/ok") == nil)
 
-        testing.expect(t, dos.load(&g.cfg, "data/ok") == nil)
-        g01, _ := dos.find(&g.cfg, "bafford.Guard01")
+        g01, _ := dos.find(&cfg, "bafford.Guard01")
 
         b := strings.builder_make(context.temp_allocator)
         out := strings.to_writer(&b)
 
-        dos.explain(&g.cfg, &g.vision, g01, out)
+        dos.explain(&cfg, g01, "vision-range", out)
         testing.expect_value(t, strings.to_string(b), "vision-range = 45  [from core.Alert]\n")
 
         strings.builder_reset(&b)
-        testing.expect_value(t, dos.cli_run(&g.cfg, {"chain", "Guard"}, out), 0)
+        testing.expect_value(t, dos.cli_run(&cfg, {"chain", "Guard"}, out), 0)
         testing.expect_value(t, strings.to_string(b), "core.Guard → core.Human → core.Creature → core.Physical\n")
 
         strings.builder_reset(&b)
-        testing.expect_value(t, dos.cli_run(&g.cfg, {"resolve", "Guard01", "max-hit-points"}, out), 0)
+        testing.expect_value(t, dos.cli_run(&cfg, {"resolve", "Guard01", "max-hit-points"}, out), 0)
         testing.expect_value(t, strings.to_string(b), "max-hit-points = 75  [override]\n")
 
         strings.builder_reset(&b)
-        testing.expect_value(t, dos.cli_run(&g.cfg, {"links", "Guard01"}, out), 0)
+        testing.expect_value(t, dos.cli_run(&cfg, {"links", "Guard01"}, out), 0)
         testing.expect(t, strings.contains(strings.to_string(b), "Contains → bafford.Sword01"))
 
         strings.builder_reset(&b)
-        testing.expect_value(t, dos.cli_run(&g.cfg, {"validate", "data/bad/unknown_parent.kdl"}, out), 1)
+        testing.expect_value(t, dos.cli_run(&cfg, {"validate", "data/bad/unknown_parent.kdl"}, out), 1)
         testing.expect(t, strings.contains(strings.to_string(b), `did you mean "Human"?`))
 
         strings.builder_reset(&b)
-        testing.expect_value(t, dos.cli_run(&g.cfg, {"inspect", "Nobody"}, out), 1)
-        testing.expect_value(t, dos.cli_run(&g.cfg, {"bogus"}, out), 2)
+        testing.expect_value(t, dos.cli_run(&cfg, {"inspect", "Nobody"}, out), 1)
+        testing.expect_value(t, dos.cli_run(&cfg, {"bogus"}, out), 2)
     }
 
     // dump of the sample game's Guard01, byte for byte

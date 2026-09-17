@@ -1,7 +1,8 @@
+// Archetypes, metas and surfaces shared by every mission.
 namespace "core"
 
 meta "Wooden" priority=0 {
-    can-attach-rope #true
+    can-attach-rope
     footstep-sound "wood"
 }
 
@@ -18,16 +19,12 @@ archetype "Creature" parent="Physical" {
 }
 
 archetype "Human" parent="Creature" {
+    vision-range 20.0
     max-air-supply-ms 10000
-    ai {
-        vision-range 20.0
-    }
 }
 
 archetype "Guard" parent="Human" {
-    ai {
-        vision-range 30.0
-    }
+    vision-range 30.0
     meta "Alert"
 }
 

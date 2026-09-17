@@ -1,0 +1,4 @@
+archetype "A"
+object "O" archetype="A"
+
+link "Contains" from="O" to="Nobody"

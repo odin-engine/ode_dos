@@ -10,26 +10,30 @@ package ode_dos
 // Base
     import rt "base:runtime"
 
-// Core
-    import "core:fmt"
-
 // ODE
     import kdl "../../ode_kdl/src"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Decode_Context
 
-    // Passed to decode procs; report problems with decode_error.
+    // Passed to the binder; problems land in the Config's errors().
     Decode_Context :: struct {
         config: ^Config,
-        loader: rawptr,
         file:   int,
     }
 
-    // Records a problem at loc; the load fails.
+    // Records a problem at loc, with something to try instead.
+    decode_context__suggest :: proc(ctx: ^Decode_Context, loc: kdl.Location, span: int, suggestion: string, format: string, args: ..any) {
+        file := ""
+        if ctx.file >= 0 && ctx.file < len(ctx.config.files) do file = ctx.config.files[ctx.file]
+        config__report(ctx.config, file, loc, span, suggestion, format, ..args)
+    }
+
+    // Records a problem at loc.
     decode_context__error :: proc(ctx: ^Decode_Context, loc: kdl.Location, format: string, args: ..any) {
-        ld := cast(^Loader)ctx.loader
-        loader__report(ld, ld.files[ctx.file], loc, 1, "", format, ..args)
+        file := ""
+        if ctx.file >= 0 && ctx.file < len(ctx.config.files) do file = ctx.config.files[ctx.file]
+        config__report(ctx.config, file, loc, 1, "", format, ..args)
     }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -172,12 +176,11 @@ package ode_dos
                     return true
                 }
             }
-            ld := cast(^Loader)ctx.loader
-            loader__report(ld, ld.files[ctx.file], v.location, len(s) + 2, suggest(s, t.names), "unknown %v %q", ti, s)
+            decode_context__suggest(ctx, v.location, len(s) + 2, suggest(s, t.names), "unknown %v %q", ti, s)
             return false
 
         case:
-            decode_context__error(ctx, v.location, "%v cannot be read from KDL; give the binding a decode proc", ti)
+            decode_context__error(ctx, v.location, "%v cannot be read from KDL", ti)
             return false
         }
     }
@@ -214,8 +217,7 @@ package ode_dos
 
     @(private)
     binder__unknown_field :: proc(ctx: ^Decode_Context, v: rt.Type_Info_Struct, name: string, loc: kdl.Location, ti: ^rt.Type_Info) {
-        ld := cast(^Loader)ctx.loader
-        loader__report(ld, ld.files[ctx.file], loc, len(name), suggest(name, v.names[:v.field_count]), "%v has no field %q", ti, name)
+        decode_context__suggest(ctx, loc, len(name), suggest(name, v.names[:v.field_count]), "%v has no field %q", ti, name)
     }
 
     @(private)
@@ -234,12 +236,4 @@ package ode_dos
         case 4: (^u32)(out)^ = u32(v)
         case 8: (^u64)(out)^ = u64(v)
         }
-    }
-
-    // A Config-owned copy that lives as long as the Config.
-    @(private)
-    config__intern :: proc(self: ^Config, s: string) -> string {
-        copy := fmt.aprint(s, allocator = self.allocator)
-        append(&self.value_strings, copy)
-        return copy
     }

@@ -2,17 +2,12 @@ Object: bafford.Guard01            archetype: core.Guard
 Chain:  core.Guard → core.Human → core.Creature → core.Physical
 Metas:  core.Alert (priority 50)
 
-Properties
-  mass               10         [core.Physical]
-  max-hit-points     75         [override]
-  vision-range       45         [core.Alert]
-  transform          [10, 0, 4] [override]
-
-State flags
-  status             Unconscious
-
-Effects
-  KnockedOut
+Values
+  mass               10               [core.Physical]
+  max-hit-points     75               [override]
+  status             Unconscious      [override]
+  transform          { position 10 0 4 } [override]
+  vision-range       45               [core.Alert]
 
 Links
-  Contains → bafford.Sword01  (Right_Hand)
+  Contains → bafford.Sword01  ({ slot RightHand })

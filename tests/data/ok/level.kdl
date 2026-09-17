@@ -1,11 +1,13 @@
+// One mission's objects and links.
 namespace "bafford"
 
 object "Guard01" archetype="core.Guard" {
+    max-hit-points 75
     transform {
         position 10.0 0.0 4.0
     }
-    max-hit-points 75
-    status "Alerted"
+    status "Alerted" "Dead"
+    knocked-out
 }
 
 object "Sword01" archetype="core.Sword"

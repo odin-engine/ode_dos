@@ -1,0 +1,11 @@
+archetype "Thing" {
+    stats {
+        hit-points 30
+        mana 5
+    }
+    slot "RightHand"
+    weight "heavy"
+    unused-value 1
+}
+
+object "Thing01" archetype="Thing"

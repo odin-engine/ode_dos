@@ -1,0 +1,7 @@
+namespace "dlc"
+
+archetype "EliteGuard" parent="core.Human" {
+    vision-range 60.0
+}
+
+object "Elite01" archetype="EliteGuard"

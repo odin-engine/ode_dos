@@ -1,32 +1,32 @@
 # Config
 
-A **`Config`** holds everything designers author: archetypes, metas, surfaces, the properties and
-flags they carry, and the objects declared in KDL. It owns one ODE_ECS `Database` and sizes it from
-the files it loads.
+A **`Config`** holds everything designers author: archetypes, metas, surfaces, the objects declared
+in KDL, and the values they carry. Nothing about that data is declared in code — the files decide
+what exists.
 
 ```odin
 cfg: dos.Config
-dos.config_init(&cfg, { keep_names = true }) or_return
+dos.config_init(&cfg, {}) or_return
 defer dos.config_terminate(&cfg)
+
+dos.load(&cfg, "data") or_return
 ```
 
-A `Config` must not be moved after `config_init`; its tables keep pointers into it.
+A `Config` must not be moved after `config_init`; its records point into it. Everything it parses
+lives in one arena, so terminating it frees the lot.
 
 ## Options
 
 | field | default | meaning |
 |---|---|---|
 | `base` | nil | inherit from another Config |
-| `max_derived` | 4 | Configs that may chain onto this one (roots only) |
-| `keep_names` | debug builds | keep name strings for `name_of`, suggestions and inspect |
-| `user_data` | nil | how decoders and tools reach your data |
+| `user_data` | nil | how build code and tools reach your data |
 | `allocator` | `context.allocator` | used for everything the Config allocates |
 
 ## Chaining Configs
 
-A Config created with `base` shares its base's entity id space, so its archetypes can inherit from
-the base's and its files can name them. Nothing flows the other way: the base cannot see the derived
-Config. Terminate derived Configs first.
+A Config created with `base` can inherit that Config's archetypes and read what it authored. Nothing
+flows the other way: the base cannot see the derived Config. Terminate derived Configs first.
 
 ```odin
 base, dlc: dos.Config
@@ -39,39 +39,33 @@ dos.load(&base, "data/core") or_return
 dos.load(&dlc, "data/dlc") or_return              // may say parent="core.Human"
 ```
 
-This is how a base game and a DLC pack, or a shared library of archetypes and one mission, live side
-by side. Each Config has its own `Database`, and the root of a chain holds the archetype hierarchy,
-the meta attachments and the object-to-archetype table for all of them.
+That is how a base game and a DLC pack, or a shared library of archetypes and one mission, live side
+by side. Ids are unique across a chain, so an id from the base means the same thing in the DLC.
 
 ## Ids
 
 ```odin
-object_id    :: distinct ecs.entity_id // a designed object
-archetype_id :: distinct ecs.entity_id // a template
-meta_id      :: distinct ecs.entity_id // a mixin
-surface_id   :: distinct ecs.entity_id // a material flyweight
+object_id    :: distinct u32 // a designed object
+archetype_id :: distinct u32 // a template
+meta_id      :: distinct u32 // a mixin
+surface_id   :: distinct u32 // a material flyweight
 ```
 
-All four name entities in a Config's Database. Your runtime entities are plain `ecs.entity_id`s in
-your own Database and never mix with them. Procedures that legitimately accept more than one kind are
-proc groups (`attach`, `set_property`, `resolve`, `name_of`).
-
-## Capacity
-
-Config space sizes itself; there is nothing to set. A new Config holds one entity, and every `load`
-grows it to exactly what the files declare before writing anything.
+They are indexes into the Config chain, stable across reloads and cheap to keep in a component of
+your own, which is the usual way a runtime entity remembers what it was built from:
 
 ```odin
-dos.config_capacity(&cfg)   // (entities, attachments)
+Of_Config :: struct { obj: dos.object_id }
 ```
 
-- Capacity only grows, and a whole chain grows together.
-- `archetype`, `meta`, `surface`, `object` and `attach` called from code cannot know the total, so at
-  capacity they double it (at least 16).
-- Growing allocates, so build and load config at load boundaries, never mid-frame.
+## Memory
+
+A load parses into the Config's arena and keeps the nodes, because a value is read later, when the
+game builds its world. Reloading the same files leaves the previous nodes behind in the arena, so a
+long editing session grows it; terminating the Config releases everything at once.
 
 ## Errors
 
-`DOS_Error` is `Invalid_Name`, `Name_Already_Exists`, `Name_Not_Found`, `Wrong_Kind`,
-`Parent_Not_Allowed`, `Load_Failed`, `Out_Of_Flags` or `Has_Derived`. ODE_ECS errors pass through
-unchanged.
+`DOS_Error` is `Invalid_Name`, `Name_Already_Exists`, `Name_Not_Found`, `Wrong_Kind`, `Load_Failed`
+or `Has_Derived`. Problems inside a load, and inside a `read` afterwards, are collected in
+[`errors`](loading.md) rather than returned.

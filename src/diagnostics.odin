@@ -8,8 +8,12 @@ package ode_dos
 
 // Core
     import "core:fmt"
+    import "core:mem/virtual"
     import "core:os"
     import "core:strings"
+
+// ODE
+    import kdl "../../ode_kdl/src"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Load_Error
@@ -23,9 +27,23 @@ package ode_dos
         suggestion: string, // "" when none
     }
 
-    // Problems from the last load; valid until the next load.
+    // Problems from the last load and from anything read since; valid until the next load.
     config__errors :: proc(self: ^Config) -> []Load_Error {
         return self.load_errors[:]
+    }
+
+    // Records a problem; what the loader and the binder both use.
+    @(private)
+    config__report :: proc(self: ^Config, file: string, loc: kdl.Location, span: int, suggestion: string, format: string, args: ..any) {
+        a := virtual.arena_allocator(&self.error_arena)
+        append(&self.load_errors, Load_Error{
+            file       = strings.clone(file, a),
+            line       = loc.line,
+            column     = loc.column,
+            span       = span,
+            message    = fmt.aprintf(format, ..args, allocator = a),
+            suggestion = strings.clone(suggestion, a),
+        })
     }
 
     // "file:line:column", the source line with the span underlined, the message and any suggestion.

@@ -1,22 +1,19 @@
 # API
 
-Everything public, by area. `cfg` is a `^Config`.
+Everything public, by area. `cfg` is a `^Config`, and `id` is an `object_id`, `archetype_id`,
+`meta_id` or `surface_id`.
 
 ## Config
 
 ```odin
 config_init(self: ^Config, opts := Config_Options{}) -> Error
 config_terminate(self: ^Config)
-config_db(self: ^Config) -> ^ecs.Database
-config_capacity(self: ^Config) -> (entities: int, attachments: int)
 user_data(self: ^Config) -> rawptr
 
 Config_Options :: struct {
-    base:        ^Config,
-    max_derived: int,
-    keep_names:  Maybe(bool),
-    user_data:   rawptr,
-    allocator:   rt.Allocator,
+    base:      ^Config,
+    user_data: rawptr,
+    allocator: rt.Allocator,
 }
 ```
 
@@ -30,56 +27,19 @@ surface(cfg, name: string) -> (surface_id, Error)
 find_archetype(cfg, name: string) -> (archetype_id, bool)
 find_meta(cfg, name: string) -> (meta_id, bool)
 find_surface(cfg, name: string) -> (surface_id, bool)
-name_of(cfg, id) -> string                        // proc group: archetype, meta, surface, object
+name_of(cfg, id) -> string                       // proc group: all four id types
 
 parent_of(cfg, id: archetype_id) -> (archetype_id, bool)
-chain_of(cfg, id: archetype_id) -> []archetype_id
+chain_of(cfg, id: archetype_id, allocator := context.temp_allocator) -> []archetype_id
 is_kind_of(cfg, id: archetype_id, kind: archetype_id) -> bool
 
-attach(cfg, holder, meta: meta_id, priority := 0) -> Error   // proc group: archetype or surface
+attach(cfg, holder, meta: meta_id, priority := 0) -> Error   // archetype or surface
 detach(cfg, holder, meta: meta_id) -> Error
-metas_of(cfg, holder, allocator := context.temp_allocator) -> []Attachment
-bake(cfg) -> Error
+metas_of(cfg, holder) -> []Attachment
+bake(cfg) -> Error                               // load bakes; needed after code changes
 ```
 
-## Properties
-
-```odin
-property_init(cfg, self: ^Property($T), name: string, decode: Decode_Proc = nil) -> Error
-
-set_property(self: ^Property($T), holder, value: T) -> Error   // archetype, meta, surface or object
-get_property(self: ^Property($T), holder) -> ^T                // authored here only
-unset_property(self: ^Property($T), holder) -> Error
-
-resolve(self: ^Property($T), id) -> ^T                         // object, archetype or surface
-resolve_with_source(self: ^Property($T), obj: object_id) -> (^T, Value_Source)
-source_name(cfg, src: Value_Source) -> string
-```
-
-## Flags, state flags and effects
-
-```odin
-flag_init(cfg, self: ^Flag, name: string) -> Error
-set_flag(self: ^Flag, holder, value := true) -> Error
-resolve_flag(self: ^Flag, id) -> bool                          // object, archetype or surface
-
-state_flags_init(cfg, self: ^State_Flags($E), name: string) -> Error
-set_state_flag(self: ^State_Flags($E), holder, flag: E, value := true) -> Error
-is_state_flag(self: ^State_Flags($E), obj: object_id, flag: E) -> bool
-state_flags_of(self: ^State_Flags($E), obj: object_id) -> bit_set[E]
-
-effects_init(cfg, self: ^Effects, cap := 32) -> Error
-effect_register(self: ^Effects, name: string) -> (bit: int, err: Error)
-effect_bit(self: ^Effects, name: string) -> (int, bool)
-effect_name(self: ^Effects, bit: int) -> string
-effect_count(self: ^Effects) -> int
-set_effect(self: ^Effects, holder, name: string, value := true) -> Error
-has_effect(self: ^Effects, obj: object_id, name: string) -> bool
-
-bits_of(self, obj: object_id) -> ecs.Bits    // proc group: State_Flags(E) and Effects
-```
-
-## Objects and queries
+## Objects
 
 ```odin
 object(cfg, archetype: archetype_id, name := "") -> (object_id, Error)
@@ -93,21 +53,35 @@ changed_objects(cfg, allocator := context.temp_allocator) -> []object_id
 changed_archetypes(cfg, allocator := context.temp_allocator) -> []archetype_id
 ```
 
+## Values
+
+```odin
+has(cfg, id, name: string) -> bool
+value(cfg, id, name: string) -> (Load_Value, bool)
+args(cfg, id, name: string) -> []Load_Value
+node(cfg, id, name: string) -> ^Load_Node
+read(cfg, id, name: string, out: ^$T) -> bool
+read_node(cfg, node: ^Load_Node, out: ^$T) -> bool
+names_of(cfg, id, allocator := context.temp_allocator) -> []string
+
+source_of(cfg, id, name: string) -> Value_Source
+source_name(cfg, src: Value_Source) -> string
+unread(cfg, allocator := context.temp_allocator) -> []Load_Error
+
+as_int(v: Load_Value) -> (i64, bool)
+as_float(v: Load_Value) -> (f64, bool)
+as_string(v: Load_Value) -> (string, bool)
+as_bool(v: Load_Value) -> (bool, bool)
+```
+
 ## Links
 
 ```odin
-link_init(cfg, self: ^Link($T), name: string, cap := 0, decode: Decode_Proc = nil) -> Error
-link(self: ^Link($T), from, to: object_id, data: T) -> Error
-unlink(self: ^Link($T), from, to: object_id) -> Error
-linked(self: ^Link($T), from, to: object_id) -> bool
-link_data(self: ^Link($T), from, to: object_id) -> (^T, bool)
-first_target(self: ^Link($T), from: object_id) -> (object_id, ^T, bool)
-count_out(self: ^Link($T), from: object_id) -> int
-count_in(self: ^Link($T), to: object_id) -> int
-links_of(self: ^Link($T), from: object_id) -> Link_Iterator(T)
-links_to(self: ^Link($T), to: object_id) -> Link_Iterator(T)
-next(it: ^Link_Iterator($T)) -> (other: object_id, data: ^T, ok: bool)
-link_table(self: ^Link($T)) -> ^ecs.Pair_Table(T)
+links_of(cfg, obj: object_id, allocator := context.temp_allocator) -> []Link
+links_to(cfg, obj: object_id, allocator := context.temp_allocator) -> []Link
+link_data(cfg, from, to: object_id, flavor: string) -> (^Load_Node, bool)
+
+Link :: struct { flavor: string, from, to: object_id, data: ^Load_Node }
 ```
 
 ## Loading and tooling
@@ -116,26 +90,25 @@ link_table(self: ^Link($T)) -> ^ecs.Pair_Table(T)
 load(cfg, path: string) -> Error
 errors(cfg) -> []Load_Error
 format_error(e: Load_Error, allocator := context.allocator) -> string
-decode_error(ctx: ^Decode_Context, loc: kdl.Location, format: string, args: ..any)
 bind_node(ctx: ^Decode_Context, node: ^Load_Node, ti: ^rt.Type_Info, out: rawptr) -> bool
 bind_value(ctx: ^Decode_Context, v: Load_Value, ti: ^rt.Type_Info, out: rawptr) -> bool
 
 dump(cfg, obj: object_id, out: io.Writer)
-explain(cfg, property: ^Property($T), obj: object_id, out: io.Writer)
+explain(cfg, obj: object_id, name: string, out: io.Writer) -> bool
 cli_run(cfg, args: []string, out: io.Writer) -> int
 ```
 
 ## Types and constants
 
 ```odin
-object_id, archetype_id, meta_id, surface_id   // distinct ecs.entity_id
+object_id, archetype_id, meta_id, surface_id   // distinct u32
 Config, Config_Options, Config_Kind
-Property($T), Flag, State_Flags($E), Effects, Link($T), Link_Iterator($T), Link_Row
-Attachment :: struct { meta: meta_id, priority: i32 }
-Source_Kind :: enum { None, Override, Authored, Meta }
-Value_Source :: struct { kind: Source_Kind, id: ecs.entity_id }
-Load_Error, Decode_Context, Decode_Proc, Load_Node, Load_Value
+Attachment   :: struct { meta: meta_id, priority: i32 }
+Source_Kind  :: enum { None, Override, Authored, Meta }
+Value_Source :: struct { kind: Source_Kind, id: u32 }
+Resolved     :: struct { name: string, node: ^Load_Node, source: Value_Source }
+Link, Load_Node, Load_Value, Load_Property, Load_Error, Decode_Context
 DOS_Error, Error
-FLAGS_PER_GROUP, DEFAULT_EFFECTS_CAP, DEFAULT_MAX_DERIVED, DEFAULT_MAX_LINKS
+NO_ID         // an id that names nothing
 VALIDATIONS   // -define:DOS_VALIDATIONS=false to compile the checks out
 ```

@@ -3,12 +3,9 @@
 
     Inspecting designed objects: what an object is, where each of its values comes from, and what
     it is linked to. Showing the source of every value is what makes a text workflow work without
-    an editor.
+    an editor. Values print as they were authored, since ODE_DOS does not know their Odin types.
 */
 package ode_dos
-
-// Base
-    import rt "base:runtime"
 
 // Core
     import "core:fmt"
@@ -16,7 +13,7 @@ package ode_dos
     import "core:strings"
 
 // ODE
-    import ecs "../../ode_ecs/src"
+    import kdl "../../ode_kdl/src"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Inspect
@@ -31,141 +28,119 @@ package ode_dos
         return ""
     }
 
-    // Archetype, chain, metas, values with their sources, flags, effects and links.
+    // Archetype, chain, metas, every value with its source, and the links.
     config__dump :: proc(self: ^Config, obj: object_id, out: io.Writer) {
-        cfg := self
-        eid := ecs.entity_id(obj)
         a := config__archetype_of(self, obj)
 
-        fmt.wprintf(out, "Object: %-26s archetype: %s\n", config__display(cfg, eid), config__display(cfg, ecs.entity_id(a)))
+        fmt.wprintf(out, "Object: %-26s archetype: %s\n", config__display(self, u32(obj)), config__display(self, u32(a)))
         fmt.wprint(out, "Chain:  ")
-        config__write_chain(cfg, a, out)
+        config__write_chain(self, a, out)
         fmt.wprintln(out)
 
-        metas := config__metas_into(cfg, ecs.entity_id(a), cfg.root.meta_scratch)
+        metas := config__metas(self, u32(a))
         if len(metas) > 0 {
             fmt.wprint(out, "Metas:  ")
             for m, i in metas {
                 if i > 0 do fmt.wprint(out, ", ")
-                fmt.wprintf(out, "%s (priority %d)", config__display(cfg, ecs.entity_id(m.meta)), m.priority)
+                fmt.wprintf(out, "%s (priority %d)", config__display(self, u32(m.meta)), m.priority)
             }
             fmt.wprintln(out)
         }
 
-        config__dump_section(cfg, eid, .Property, "Properties", out)
-        config__dump_section(cfg, eid, .Flag, "Flags", out)
-        config__dump_section(cfg, eid, .State_Flags, "State flags", out)
-        config__dump_section(cfg, eid, .Effect, "Effects", out)
-        config__dump_links(cfg, eid, out)
+        values := values__resolved(self, u32(obj))
+        if len(values) > 0 {
+            fmt.wprintln(out, "\nValues")
+            for v in values {
+                fmt.wprintf(out, "  %-18s %-16s [%s]\n", v.name, node_text(v.node), config__source_name(self, v.source))
+            }
+        }
+
+        links := links__of(self, obj)
+        if len(links) > 0 {
+            fmt.wprintln(out, "\nLinks")
+            for l in links {
+                fmt.wprintf(out, "  %s → %s", l.flavor, config__display(self, u32(l.to)))
+                if text := node_text(l.data); text != "" do fmt.wprintf(out, "  (%s)", text)
+                fmt.wprintln(out)
+            }
+        }
     }
 
     // "name = value  [from source]"
-    config__explain :: proc(self: ^Config, property: ^Property($T), obj: object_id, out: io.Writer) {
-        for c := self; c != nil; c = c.base {
-            for &b in c.bindings {
-                if b.data == property {
-                    config__explain_binding(self, &b, ecs.entity_id(obj), out)
-                    return
-                }
-            }
+    config__explain :: proc(self: ^Config, obj: object_id, name: string, out: io.Writer) -> bool {
+        node := values__node(self, u32(obj), name)
+        if node == nil {
+            fmt.wprintf(out, "%s = (none)\n", name)
+            return false
         }
+
+        src := values__source(self, u32(obj), name)
+        if src.kind == .Override {
+            fmt.wprintf(out, "%s = %s  [override]\n", name, node_text(node))
+        } else {
+            fmt.wprintf(out, "%s = %s  [from %s]\n", name, node_text(node), config__source_name(self, src))
+        }
+        return true
     }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Private
 
     @(private)
-    config__explain_binding :: proc(self: ^Config, b: ^Binding, holder: ecs.entity_id, out: io.Writer) -> bool {
-        v, _, src, ok := b.read(b.data, holder, 0)
-        if !ok {
-            fmt.wprintf(out, "%s = (none)\n", b.name)
-            return false
-        }
-        if src.kind == .Override {
-            fmt.wprintf(out, "%s = %v  [override]\n", b.name, value_any(v, b.type_info))
-        } else {
-            fmt.wprintf(out, "%s = %v  [from %s]\n", b.name, value_any(v, b.type_info), config__source_name(self, src))
-        }
-        return true
-    }
-
-    @(private)
     config__write_chain :: proc(self: ^Config, a: archetype_id, out: io.Writer) {
-        fmt.wprint(out, config__display(self, ecs.entity_id(a)))
-        for p in config__chain_of(self, a) do fmt.wprintf(out, " → %s", config__display(self, ecs.entity_id(p)))
+        fmt.wprint(out, config__display(self, u32(a)))
+        for p in config__chain_of(self, a) do fmt.wprintf(out, " → %s", config__display(self, u32(p)))
     }
 
+    // The name, or "#index" when the entity has none.
     @(private)
-    config__dump_section :: proc(self: ^Config, holder: ecs.entity_id, kind: Binding_Kind, title: string, out: io.Writer) {
-        printed := false
-        for c := self; c != nil; c = c.base {
-            for &b in c.bindings {
-                if b.kind != kind || b.read == nil do continue
+    config__display :: proc(self: ^Config, ix: u32) -> string {
+        if n := config__name_of(self, ix); n != "" do return n
+        return fmt.tprintf("#%d", ix)
+    }
 
-                #partial switch kind {
-                case .Property:
-                    v, _, src, ok := b.read(b.data, holder, 0)
-                    if !ok do continue
-                    section_header(&printed, title, out)
-                    fmt.wprintf(out, "  %-18s %-10s [%s]\n", b.name, fmt.tprint(value_any(v, b.type_info)), config__source_name(self, src))
-                case .Flag, .Effect:
-                    _, _, _, ok := b.read(b.data, holder, 0)
-                    if !ok do continue
-                    section_header(&printed, title, out)
-                    fmt.wprintf(out, "  %s\n", b.name)
-                case .State_Flags:
-                    e := rt.type_info_base(b.type_info).variant.(rt.Type_Info_Enum)
-                    names := strings.builder_make(context.temp_allocator)
-                    for n, i in e.names {
-                        if _, _, _, set := b.read(b.data, holder, int(e.values[i])); set {
-                            if strings.builder_len(names) > 0 do strings.write_string(&names, ", ")
-                            strings.write_string(&names, n)
-                        }
-                    }
-                    if strings.builder_len(names) == 0 do continue
-                    section_header(&printed, title, out)
-                    fmt.wprintf(out, "  %-18s %s\n", b.name, strings.to_string(names))
+    // A value as it was authored: its arguments, then its children in braces.
+    @(private)
+    node_text :: proc(node: ^Load_Node) -> string {
+        if node == nil do return ""
+
+        b := strings.builder_make(context.temp_allocator)
+        for a, i in node.args {
+            if i > 0 do strings.write_byte(&b, ' ')
+            strings.write_string(&b, value_text(a.value))
+        }
+
+        if len(node.children) > 0 {
+            if strings.builder_len(b) > 0 do strings.write_byte(&b, ' ')
+            strings.write_string(&b, "{ ")
+            for c, i in node.children {
+                if i > 0 do strings.write_string(&b, ", ")
+                strings.write_string(&b, c.name)
+                if text := node_text(c); text != "" {
+                    strings.write_byte(&b, ' ')
+                    strings.write_string(&b, text)
                 }
             }
+            strings.write_string(&b, " }")
         }
+
+        if strings.builder_len(b) == 0 do return "#true" // a name on its own is a flag
+        return strings.to_string(b)
     }
 
     @(private)
-    config__dump_links :: proc(self: ^Config, holder: ecs.entity_id, out: io.Writer) {
-        printed := false
-        for c := self; c != nil; c = c.base {
-            for &b in c.bindings {
-                if b.kind != .Link || b.read == nil do continue
-                for i := 0; ; i += 1 {
-                    v, target, _, ok := b.read(b.data, holder, i)
-                    if !ok do break
-                    section_header(&printed, "Links", out)
-                    fmt.wprintf(out, "  %s → %s  (%v)\n", b.name, config__display(self, target), value_any(v, b.type_info))
-                }
+    value_text :: proc(v: kdl.Value) -> string {
+        switch x in v.variant {
+        case string:
+            return x
+        case bool:
+            return x ? "#true" : "#false"
+        case kdl.Number:
+            switch n in x {
+            case i64:    return fmt.tprintf("%d", n)
+            case f64:    return fmt.tprintf("%v", n)
+            case string: return n
             }
         }
-    }
-
-    @(private)
-    section_header :: proc(printed: ^bool, title: string, out: io.Writer) {
-        if printed^ do return
-        fmt.wprintf(out, "\n%s\n", title)
-        printed^ = true
-    }
-
-    // A single-field struct shows as its field.
-    @(private)
-    value_any :: proc(v: rawptr, ti: ^rt.Type_Info) -> any {
-        base := rt.type_info_base(ti)
-        if s, is_struct := base.variant.(rt.Type_Info_Struct); is_struct && s.field_count == 1 {
-            return any{ rawptr(uintptr(v) + s.offsets[0]), s.types[0].id }
-        }
-        return any{ v, ti.id }
-    }
-
-    // The name, or "#index" when names are not kept.
-    @(private)
-    config__display :: proc(self: ^Config, eid: ecs.entity_id) -> string {
-        if n := config__name_of(self, eid); n != "" do return n
-        return fmt.tprintf("#%d", eid.ix)
+        return ""
     }

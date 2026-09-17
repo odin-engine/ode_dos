@@ -1,0 +1,14 @@
+// Everything this sample knows is in this file: nothing is declared in Odin.
+
+archetype "Physical" { mass 10.0 }
+archetype "Creature" parent="Physical" { max-hit-points 100 }
+archetype "Guard"    parent="Creature"
+
+object "Guard01" archetype="Guard" {
+    max-hit-points 75                     // this one is wounded
+    transform { position 10.0 0.0 4.0 }
+}
+
+object "Guard02" archetype="Guard" {
+    transform { position 2.0 0.0 1.0 }
+}

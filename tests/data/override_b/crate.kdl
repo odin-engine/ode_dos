@@ -1,7 +1,0 @@
-archetype "Crate" {
-    mass 5.0
-}
-
-object "Crate01" archetype="Crate" {
-    mass 9.0
-}

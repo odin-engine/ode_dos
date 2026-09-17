@@ -124,6 +124,35 @@
             }
         },
         {
+            "label": "Sample01",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "detail": "",
+            "isBackground": false,
+            "command": "odin",
+            "args": [
+                "run",
+                "${workspaceFolder}\\samples\\sample01",
+                "-debug",
+                "-out:${workspaceFolder}\\samples\\sample01\\out\\sample01.exe"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\samples\\sample01\\"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true,
+                "close": false
+            }
+        },
+        {
             "label": "Thief Demo",
             "group": {
                 "kind": "build",

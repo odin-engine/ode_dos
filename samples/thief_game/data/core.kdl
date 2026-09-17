@@ -19,15 +19,11 @@ archetype "Creature" parent="Physical" {
 }
 
 archetype "Human" parent="Creature" {
-    ai {
-        vision-range 20.0
-    }
+    vision-range 20.0
 }
 
 archetype "Guard" parent="Human" {
-    ai {
-        vision-range 30.0
-    }
+    vision-range 30.0
     meta "Alert"
 }
 

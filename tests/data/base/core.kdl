@@ -1,0 +1,6 @@
+namespace "core"
+
+archetype "Human" {
+    mass 80.0
+    vision-range 20.0
+}

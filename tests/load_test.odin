@@ -1,7 +1,8 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    Tests for loading KDL: values, precedence, objects, links, diagnostics and hot reload.
+    Tests for loading KDL: values with their inheritance, objects, links, hot reload and
+    diagnostics.
 */
 package ode_dos__tests
 
@@ -14,14 +15,8 @@ package ode_dos__tests
     import dos "../src"
 
 ///////////////////////////////////////////////////////////////////////////////
-// Setup
+// Types the tests read values into
 
-    Ld_Mass      :: struct { value: f32 }
-    Ld_Max_HP    :: struct { value: int }
-    Ld_Air       :: struct { ms: int }
-    Ld_Vision    :: struct { range: f32 }
-    Ld_Sound     :: struct { name: string }
-    Ld_Level     :: struct { v: u8 }
     Ld_Transform :: struct { position: [3]f32 }
 
     Ld_Slot :: enum u8 {
@@ -33,42 +28,14 @@ package ode_dos__tests
         slot: Ld_Slot,
     }
 
-    Ld_Status :: enum u8 {
-        Dead,
-        Alerted,
-    }
+    ld_float :: proc(t: ^testing.T, cfg: ^dos.Config, id: $I, name: string, loc := #caller_location) -> f64 {
+        v, has := dos.value(cfg, id, name)
+        testing.expectf(t, has, "%s is not set", name, loc = loc)
+        if !has do return 0
 
-    Ld_Game :: struct {
-        cfg:       dos.Config,
-        mass:      dos.Property(Ld_Mass),
-        max_hp:    dos.Property(Ld_Max_HP),
-        air:       dos.Property(Ld_Air),
-        vision:    dos.Property(Ld_Vision),
-        sound:     dos.Property(Ld_Sound),
-        level:     dos.Property(Ld_Level),
-        transform: dos.Property(Ld_Transform),
-        rope:      dos.Flag,
-        status:    dos.State_Flags(Ld_Status),
-        effects:   dos.Effects,
-        contains:  dos.Link(Ld_Contains),
-    }
-
-    ld_setup :: proc(t: ^testing.T, g: ^Ld_Game) {
-        cfg := &g.cfg
-        testing.expect(t, dos.config_init(cfg, { keep_names = true, user_data = g }) == nil)
-        testing.expect(t, dos.property_init(cfg, &g.mass, "mass") == nil)
-        testing.expect(t, dos.property_init(cfg, &g.max_hp, "max-hit-points") == nil)
-        testing.expect(t, dos.property_init(cfg, &g.air, "max-air-supply-ms") == nil)
-        testing.expect(t, dos.property_init(cfg, &g.vision, "vision-range") == nil)
-        testing.expect(t, dos.property_init(cfg, &g.sound, "footstep-sound") == nil)
-        testing.expect(t, dos.property_init(cfg, &g.level, "level") == nil)
-        testing.expect(t, dos.property_init(cfg, &g.transform, "transform") == nil)
-        testing.expect(t, dos.flag_init(cfg, &g.rope, "can-attach-rope") == nil)
-        testing.expect(t, dos.state_flags_init(cfg, &g.status, "status") == nil)
-        testing.expect(t, dos.effects_init(cfg, &g.effects) == nil)
-        testing.expect(t, dos.link_init(cfg, &g.contains, "Contains") == nil)
-        _, err := dos.effect_register(&g.effects, "KnockedOut")
-        testing.expect(t, err == nil)
+        f, ok := dos.as_float(v)
+        testing.expectf(t, ok, "%s is not a number", name, loc = loc)
+        return f
     }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -76,90 +43,131 @@ package ode_dos__tests
 
     @(test)
     load__ok__test :: proc(t: ^testing.T) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
-        cfg := &g.cfg
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil)
+        defer dos.config_terminate(&cfg)
 
-        err := dos.load(cfg, "data/ok")
+        err := dos.load(&cfg, "data/ok")
         testing.expect(t, err == nil)
-        for e in dos.errors(cfg) do log.error(dos.format_error(e, context.temp_allocator))
+        for e in dos.errors(&cfg) do log.error(dos.format_error(e, context.temp_allocator))
         if err != nil do return
 
-        guard, _ := dos.find_archetype(cfg, "core.Guard")
-        human, _ := dos.find_archetype(cfg, "core.Human")
-        sword, _ := dos.find_archetype(cfg, "core.Sword")
-        planks, _ := dos.find_surface(cfg, "core.WoodPlanks")
+        guard, _ := dos.find_archetype(&cfg, "core.Guard")
+        human, _ := dos.find_archetype(&cfg, "core.Human")
+        sword, _ := dos.find_archetype(&cfg, "core.Sword")
+        planks, _ := dos.find_surface(&cfg, "core.WoodPlanks")
 
-        testing.expect_value(t, dos.resolve(&g.mass, guard).value, 10)
-        testing.expect_value(t, dos.resolve(&g.mass, sword).value, 2)
-        testing.expect_value(t, dos.resolve(&g.vision, human).range, 20)
-        testing.expect_value(t, dos.resolve(&g.vision, guard).range, 45) // the Alert meta, default priority 50
-        testing.expect_value(t, dos.resolve(&g.air, guard).ms, 10000)
-        testing.expect_value(t, dos.resolve(&g.max_hp, guard).value, 100)
-        testing.expect_value(t, dos.resolve(&g.sound, planks).name, "wood")
-        testing.expect(t, dos.resolve_flag(&g.rope, planks))
-        testing.expect(t, !dos.resolve_flag(&g.rope, guard))
+        testing.expect_value(t, ld_float(t, &cfg, guard, "mass"), 10)          // core.Physical
+        testing.expect_value(t, ld_float(t, &cfg, sword, "mass"), 2)
+        testing.expect_value(t, ld_float(t, &cfg, human, "vision-range"), 20)
+        testing.expect_value(t, ld_float(t, &cfg, guard, "vision-range"), 45)  // the Alert meta
+        testing.expect_value(t, ld_float(t, &cfg, guard, "max-air-supply-ms"), 10000)
+        testing.expect_value(t, ld_float(t, &cfg, guard, "max-hit-points"), 100)
 
-        g01, found := dos.find(cfg, "bafford.Guard01")
+        // a flag is a name with no argument
+        testing.expect(t, dos.has(&cfg, planks, "can-attach-rope"))
+        testing.expect(t, !dos.has(&cfg, guard, "can-attach-rope"))
+        sound, _ := dos.value(&cfg, planks, "footstep-sound")
+        s, _ := dos.as_string(sound)
+        testing.expect_value(t, s, "wood")
+
+        g01, found := dos.find(&cfg, "bafford.Guard01")
         testing.expect(t, found)
-        s01, found2 := dos.find(cfg, "bafford.Sword01")
+        s01, found2 := dos.find(&cfg, "bafford.Sword01")
         testing.expect(t, found2)
         if !found || !found2 do return
 
-        testing.expect(t, dos.archetype_of(cfg, g01) == guard)
-        testing.expect_value(t, dos.resolve(&g.max_hp, g01).value, 75) // authored on the object
-        testing.expect_value(t, dos.resolve(&g.transform, g01).position, [3]f32{ 10, 0, 4 })
-        testing.expect(t, dos.is_state_flag(&g.status, g01, Ld_Status.Alerted))
-        testing.expect_value(t, len(dos.objects(cfg)), 2)
+        testing.expect(t, dos.archetype_of(&cfg, g01) == guard)
+        testing.expect_value(t, ld_float(t, &cfg, g01, "max-hit-points"), 75) // authored on the object
+        testing.expect_value(t, ld_float(t, &cfg, g01, "mass"), 10)           // still inherited
+        testing.expect(t, dos.has(&cfg, g01, "knocked-out"))
 
-        d, linked := dos.link_data(&g.contains, g01, s01)
-        testing.expect(t, linked && d.slot == .Right_Hand)
+        // a name with several arguments is a list
+        status := dos.args(&cfg, g01, "status")
+        testing.expect_value(t, len(status), 2)
+        if len(status) == 2 {
+            a, _ := dos.as_string(status[0])
+            b, _ := dos.as_string(status[1])
+            testing.expect_value(t, a, "Alerted")
+            testing.expect_value(t, b, "Dead")
+        }
+
+        // and a node with children fills a struct
+        transform: Ld_Transform
+        testing.expect(t, dos.read(&cfg, g01, "transform", &transform))
+        testing.expect_value(t, transform.position, [3]f32{ 10, 0, 4 })
+
+        // where each value came from
+        testing.expect(t, dos.source_of(&cfg, g01, "max-hit-points").kind == .Override)
+        mass_src := dos.source_of(&cfg, g01, "mass")
+        testing.expect(t, mass_src.kind == .Authored)
+        testing.expect_value(t, dos.source_name(&cfg, mass_src), "core.Physical")
+        vision_src := dos.source_of(&cfg, g01, "vision-range")
+        testing.expect(t, vision_src.kind == .Meta)
+        testing.expect_value(t, dos.source_name(&cfg, vision_src), "core.Alert")
+
+        links := dos.links_of(&cfg, g01)
+        testing.expect_value(t, len(links), 1)
+        if len(links) == 1 {
+            testing.expect_value(t, links[0].flavor, "Contains")
+            testing.expect(t, links[0].to == s01)
+
+            data: Ld_Contains
+            testing.expect(t, dos.read_node(&cfg, links[0].data, &data))
+            testing.expect(t, data.slot == .Right_Hand)
+        }
+
+        testing.expect_value(t, len(dos.objects(&cfg)), 2)
     }
 
     @(test)
     load__reload__test :: proc(t: ^testing.T) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
-        cfg := &g.cfg
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil)
+        defer dos.config_terminate(&cfg)
 
-        testing.expect(t, dos.load(cfg, "data/reload_a") == nil)
-        crate, _ := dos.find_archetype(cfg, "Crate")
-        testing.expect_value(t, dos.resolve(&g.mass, crate).value, 5)
-        c01, _ := dos.find(cfg, "Crate01")
-        testing.expect_value(t, dos.resolve(&g.mass, c01).value, 5)
+        testing.expect(t, dos.load(&cfg, "data/reload_a") == nil)
+        crate, _ := dos.find_archetype(&cfg, "Crate")
+        c01, _ := dos.find(&cfg, "Crate01")
+        testing.expect_value(t, ld_float(t, &cfg, crate, "mass"), 5)
+        testing.expect_value(t, ld_float(t, &cfg, c01, "mass"), 3)
 
         // the same names again update in place; the objects are the same ones
-        testing.expect(t, dos.load(cfg, "data/reload_b") == nil)
-        testing.expect_value(t, dos.resolve(&g.mass, crate).value, 7)
-        again, _ := dos.find(cfg, "Crate01")
+        testing.expect(t, dos.load(&cfg, "data/reload_b") == nil)
+        again, _ := dos.find(&cfg, "Crate01")
         testing.expect(t, again == c01)
-        testing.expect_value(t, len(dos.objects(cfg)), 1)
+        testing.expect_value(t, ld_float(t, &cfg, crate, "mass"), 7)
+        testing.expect_value(t, ld_float(t, &cfg, c01, "mass"), 9)
+        testing.expect(t, dos.source_of(&cfg, c01, "mass").kind == .Override)
+        testing.expect_value(t, len(dos.objects(&cfg)), 1)
 
         // and the load says what it touched
-        changed := dos.changed_objects(cfg)
+        changed := dos.changed_objects(&cfg)
         testing.expect_value(t, len(changed), 1)
         if len(changed) == 1 do testing.expect(t, changed[0] == c01)
-        testing.expect_value(t, len(dos.changed_archetypes(cfg)), 1)
+        testing.expect_value(t, len(dos.changed_archetypes(&cfg)), 1)
     }
 
     @(test)
-    load__object_override_reload__test :: proc(t: ^testing.T) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
-        cfg := &g.cfg
+    load__adds_to_what_is_there__test :: proc(t: ^testing.T) {
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil)
+        defer dos.config_terminate(&cfg)
 
-        testing.expect(t, dos.load(cfg, "data/override_a") == nil)
-        obj, _ := dos.find(cfg, "Crate01")
-        testing.expect_value(t, dos.resolve(&g.mass, obj).value, 3)
+        testing.expect(t, dos.load(&cfg, "data/ok") == nil)
+        guard, _ := dos.find_archetype(&cfg, "core.Guard")
+        g01, _ := dos.find(&cfg, "bafford.Guard01")
 
-        // a designer edits the object's own value and saves
-        testing.expect(t, dos.load(cfg, "data/override_b") == nil)
-        testing.expect_value(t, dos.resolve(&g.mass, obj).value, 9)
-        _, src := dos.resolve_with_source(&g.mass, obj)
-        testing.expect(t, src.kind == .Override)
+        testing.expect(t, dos.load(&cfg, "data/grow") == nil)
+        archer, ok := dos.find_archetype(&cfg, "core.Archer")
+        testing.expect(t, ok)
+        testing.expect_value(t, ld_float(t, &cfg, archer, "vision-range"), 45) // its own Alert meta
+
+        // what was already there is untouched
+        again, _ := dos.find_archetype(&cfg, "core.Guard")
+        testing.expect(t, again == guard)
+        testing.expect(t, dos.archetype_of(&cfg, g01) == guard)
+        testing.expect_value(t, ld_float(t, &cfg, g01, "max-hit-points"), 75)
     }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -167,15 +175,14 @@ package ode_dos__tests
 
     @(private = "file")
     ld_expect_failure :: proc(t: ^testing.T, file: string, contains: string, suggestion := "", loc := #caller_location) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
-        cfg := &g.cfg
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil, loc = loc)
+        defer dos.config_terminate(&cfg)
 
         path := strings.concatenate({ "data/bad/", file }, context.temp_allocator)
-        testing.expect(t, dos.load(cfg, path) == dos.DOS_Error.Load_Failed, loc = loc)
+        testing.expect(t, dos.load(&cfg, path) == dos.DOS_Error.Load_Failed, loc = loc)
 
-        errs := dos.errors(cfg)
+        errs := dos.errors(&cfg)
         testing.expect(t, len(errs) > 0, loc = loc)
         if len(errs) == 0 do return
 
@@ -183,7 +190,7 @@ package ode_dos__tests
         if suggestion != "" do testing.expectf(t, errs[0].suggestion == suggestion, "%s: suggestion %q, expected %q", file, errs[0].suggestion, suggestion, loc = loc)
 
         // a failed load changes nothing
-        _, created := dos.find_archetype(cfg, "A")
+        _, created := dos.find_archetype(&cfg, "A")
         testing.expect(t, !created, loc = loc)
     }
 
@@ -191,23 +198,22 @@ package ode_dos__tests
     load__diagnostics__test :: proc(t: ^testing.T) {
         ld_expect_failure(t, "unknown_parent.kdl", `unknown archetype "Humn"`, "Human")
         ld_expect_failure(t, "duplicate.kdl", "declared twice")
-        ld_expect_failure(t, "unknown_config.kdl", `unknown value "masss"`, "mass")
-        ld_expect_failure(t, "wrong_type.kdl", "expected a number")
-        ld_expect_failure(t, "out_of_range.kdl", "out of range")
         ld_expect_failure(t, "cycle.kdl", "inheritance cycle")
-        ld_expect_failure(t, "bad_enum.kdl", `unknown status flag "Sleeping"`)
         ld_expect_failure(t, "syntax.kdl", "KDL syntax error")
         ld_expect_failure(t, "unknown_top.kdl", `unknown node "archetyp"`, "archetype")
+        ld_expect_failure(t, "no_archetype.kdl", `needs archetype="Name"`)
+        ld_expect_failure(t, "unknown_object.kdl", `unknown object "Nobody"`)
+        ld_expect_failure(t, "meta_on_meta.kdl", "a meta cannot carry metas")
     }
 
     @(test)
     load__format_error__test :: proc(t: ^testing.T) {
-        g: Ld_Game
-        ld_setup(t, &g)
-        defer dos.config_terminate(&g.cfg)
+        cfg: dos.Config
+        testing.expect(t, dos.config_init(&cfg) == nil)
+        defer dos.config_terminate(&cfg)
 
-        testing.expect(t, dos.load(&g.cfg, "data/bad/unknown_parent.kdl") == dos.DOS_Error.Load_Failed)
-        errs := dos.errors(&g.cfg)
+        testing.expect(t, dos.load(&cfg, "data/bad/unknown_parent.kdl") == dos.DOS_Error.Load_Failed)
+        errs := dos.errors(&cfg)
         testing.expect_value(t, len(errs), 1)
         if len(errs) != 1 do return
 

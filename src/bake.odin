@@ -1,14 +1,11 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    Bake: flattens inheritance and metas into per-archetype and per-surface values, so resolving
-    never walks a chain. Objects are not baked: what they author wins, and everything else comes
-    from their archetype's baked value.
+    Bake: flattens inheritance and metas into one value per name per archetype and surface, so
+    reading never walks a chain. Objects are not baked: what they author wins, and everything else
+    comes from their archetype.
 */
 package ode_dos
-
-// ODE
-    import ecs "../../ode_ecs/src"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Bake
@@ -17,11 +14,13 @@ package ode_dos
     config__bake :: proc(self: ^Config) -> Error {
         when VALIDATIONS do assert(config__is_valid(self))
 
-        for c in self.root.chain {
-            for s in c.storages {
-                if s.bake != nil do s.bake(c, s.data) or_return
-            }
-            for g in c.flag_groups do flag_group__bake(g) or_return
+        root := self.root
+        for ix in 0..<len(root.entities) {
+            e := &root.entities[ix]
+            if e.kind != .Archetype && e.kind != .Surface do continue
+
+            clear(&e.baked)
+            config__bake_entity(self, u32(ix)) or_return
         }
         return nil
     }
@@ -29,59 +28,40 @@ package ode_dos
 ///////////////////////////////////////////////////////////////////////////////
 // Private
 
-    // Everything a Config owns that grows with its Database, and bakes when it holds values.
+    // Precedence: a holder's metas (highest priority first), the holder itself, then the same for
+    // each parent up to the root. The first source with a name wins. Surfaces have no parents.
     @(private)
-    Storage :: struct {
-        bake: proc(cfg: ^Config, data: rawptr) -> Error,
-        grow: proc(data: rawptr, cap: int) -> Error,
-        data: rawptr,
-    }
+    config__bake_entity :: proc(self: ^Config, ix: u32) -> Error {
+        target := config__entity(self, ix)
+        if target == nil do return nil
 
-    @(private)
-    config__add_storage :: proc(self: ^Config, bake: proc(cfg: ^Config, data: rawptr) -> Error, grow: proc(data: rawptr, cap: int) -> Error, data: rawptr) -> Error {
-        _, err := append(&self.storages, Storage{ bake = bake, grow = grow, data = data })
-        return err
-    }
+        cur := ix
+        for {
+            e := config__entity(self, cur)
+            if e == nil do break
 
-    // Precedence order: a holder's metas (highest priority first), the holder itself, then the
-    // same for each parent up to the root. Surfaces have no parents.
-    @(private)
-    Source_Iter :: struct {
-        config:    ^Config,
-        cur:       ecs.entity_id,
-        kind:      Config_Kind,
-        metas:     []Attachment,
-        next_meta: int,
-        done:      bool,
-    }
+            for a in config__metas(self, cur) {
+                config__bake_from(self, target, u32(a.meta)) or_return
+            }
+            config__bake_from(self, target, cur) or_return
 
-    @(private)
-    source_iter :: proc(cfg: ^Config, holder: ecs.entity_id, kind: Config_Kind) -> Source_Iter {
-        return Source_Iter{ config = cfg, cur = holder, kind = kind, metas = config__metas_into(cfg, holder, cfg.root.meta_scratch) }
-    }
-
-    @(private)
-    source_iter__next :: proc(it: ^Source_Iter) -> (src: ecs.entity_id, ok: bool) {
-        if it.done do return {}, false
-
-        if it.next_meta < len(it.metas) {
-            it.next_meta += 1
-            return ecs.entity_id(it.metas[it.next_meta - 1].meta), true
+            if e.kind == .Surface || e.parent == NO_ID do break
+            cur = e.parent
         }
+        return nil
+    }
 
-        src = it.cur
-        if it.kind == .Surface {
-            it.done = true
-            return src, true
-        }
+    @(private)
+    config__bake_from :: proc(self: ^Config, target: ^Entity, source_ix: u32) -> Error {
+        src := config__entity(self, source_ix)
+        if src == nil do return nil
 
-        p, err := ecs.parent_of(&it.config.root.db, it.cur)
-        if err != nil || ecs.is_not_set(p) {
-            it.done = true
-        } else {
-            it.cur = p
-            it.metas = config__metas_into(it.config, p, it.config.root.meta_scratch)
-            it.next_meta = 0
+        for hash, a in src.authored {
+            if _, taken := target.baked[hash]; taken {
+                values__mark(self, source_ix, hash) // something more specific shadows it
+                continue
+            }
+            target.baked[hash] = Baked{ node = a.node, from = source_ix }
         }
-        return src, true
+        return nil
     }

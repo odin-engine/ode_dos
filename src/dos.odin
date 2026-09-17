@@ -1,9 +1,9 @@
 /*
     2026 (c) Oleh, https://github.com/zm69
 
-    ODE_DOS - a Dark Object System over ODE_ECS: prototype inheritance, mixins, links and KDL
-    authoring. A Config holds what designers author and describes it back to the game; the game's
-    runtime is its own ODE_ECS Database, which ODE_DOS never touches.
+    ODE_DOS - a Dark Object System: prototype inheritance, mixins, links and KDL authoring. A
+    Config loads what designers author and bakes inheritance over it; the game reads those values
+    by name and builds its own runtime out of them. Nothing here is declared in code.
 
     This file is the public API surface: short aliases and proc groups over the typename__action
     procedures defined in the other files.
@@ -13,27 +13,22 @@ package ode_dos
 // Base
     import rt "base:runtime"
 
-// ODE
-    import ecs "../../ode_ecs/src"
-    import oc "../../ode_ecs/src/ode_core"
-
 ///////////////////////////////////////////////////////////////////////////////
 // Defines
 
     VALIDATIONS :: #config(DOS_VALIDATIONS, true)
 
-    FLAGS_PER_GROUP     :: 128
-    DEFAULT_EFFECTS_CAP :: 32
-    DEFAULT_MAX_DERIVED :: 4
-    DEFAULT_MAX_LINKS   :: 32_768
+    NO_ID :: max(u32)
 
 ///////////////////////////////////////////////////////////////////////////////
 // Ids
 
-    object_id    :: distinct ecs.entity_id // a designed object
-    archetype_id :: distinct ecs.entity_id // a template
-    meta_id      :: distinct ecs.entity_id // a mixin
-    surface_id   :: distinct ecs.entity_id // a material flyweight
+    // Indexes into the Config chain's entity array; stable across reloads, cheap to keep in a
+    // component of your own so a runtime entity remembers what it was built from.
+    object_id    :: distinct u32 // a designed object
+    archetype_id :: distinct u32 // a template
+    meta_id      :: distinct u32 // a mixin
+    surface_id   :: distinct u32 // a material flyweight
 
 ///////////////////////////////////////////////////////////////////////////////
 // Errors
@@ -44,30 +39,13 @@ package ode_dos
         Name_Already_Exists,
         Name_Not_Found,
         Wrong_Kind,
-        Parent_Not_Allowed,
         Load_Failed,
-        Out_Of_Flags, // a flag group holds FLAGS_PER_GROUP bits
-        Has_Derived,  // a Config other Configs are based on cannot be terminated
+        Has_Derived, // a Config other Configs are based on cannot be terminated
     }
 
     Error :: union #shared_nil {
         DOS_Error,
-        ecs.API_Error,
-        oc.Core_Error,
-        oc.Error,
         rt.Allocator_Error,
-    }
-
-    // ODE_ECS errors as ODE_DOS errors.
-    @(private)
-    ecs_err :: #force_inline proc "contextless" (e: ecs.Error) -> Error {
-        switch v in e {
-        case ecs.API_Error:       return v
-        case oc.Core_Error:       return v
-        case oc.Error:            return v
-        case rt.Allocator_Error:  return v
-        }
-        return nil
     }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -78,8 +56,6 @@ package ode_dos
     //
         config_init      :: config__init
         config_terminate :: config__terminate
-        config_db        :: config__db
-        config_capacity  :: config__capacity
         user_data        :: config__user_data
 
     //
@@ -129,99 +105,71 @@ package ode_dos
         changed_archetypes :: config__changed_archetypes
 
     //
-    // Properties
+    // Values: whatever the files authored, inherited and baked
     //
-        property_init :: property__init
-        set_property :: proc {
-            property__set_archetype,
-            property__set_meta,
-            property__set_surface,
-            property__set_object,
+        has :: proc {
+            values__has_object,
+            values__has_archetype,
+            values__has_meta,
+            values__has_surface,
         }
-        get_property :: proc {
-            property__get_archetype,
-            property__get_meta,
-            property__get_surface,
-            property__get_object,
+        node :: proc {
+            values__node_object,
+            values__node_archetype,
+            values__node_meta,
+            values__node_surface,
         }
-        unset_property :: proc {
-            property__unset_archetype,
-            property__unset_meta,
-            property__unset_surface,
-            property__unset_object,
+        read :: proc {
+            values__read_object,
+            values__read_archetype,
+            values__read_meta,
+            values__read_surface,
         }
-        resolve :: proc {
-            property__resolve_object,
-            property__resolve_archetype,
-            property__resolve_surface,
+        value :: proc {
+            values__value_object,
+            values__value_archetype,
+            values__value_meta,
+            values__value_surface,
         }
-        resolve_with_source :: property__resolve_with_source
+        args :: proc {
+            values__args_object,
+            values__args_archetype,
+            values__args_meta,
+            values__args_surface,
+        }
+        source_of :: proc {
+            values__source_object,
+            values__source_archetype,
+            values__source_meta,
+            values__source_surface,
+        }
+        names_of :: proc {
+            values__names_object,
+            values__names_archetype,
+            values__names_meta,
+            values__names_surface,
+        }
 
-    //
-    // Flags, state flags and effects: authored bits the game copies into its own Flags_Table
-    //
-        flag_init :: flag__init
-        set_flag :: proc {
-            flag__set_archetype,
-            flag__set_meta,
-            flag__set_surface,
-            flag__set_object,
-        }
-        resolve_flag :: proc {
-            flag__resolve_object,
-            flag__resolve_archetype,
-            flag__resolve_surface,
-        }
+        read_node   :: values__read_node
+        unread      :: values__unread
+        source_name :: config__source_name
 
-        state_flags_init :: state_flags__init
-        set_state_flag :: proc {
-            state_flags__set_archetype,
-            state_flags__set_meta,
-            state_flags__set_surface,
-            state_flags__set_object,
-        }
-        is_state_flag :: state_flags__is_set
-        state_flags_of :: state_flags__flags_of
-
-        effects_init    :: effects__init
-        effect_register :: effects__register
-        effect_bit      :: effects__bit
-        effect_name     :: effects__name
-        effect_count    :: effects__count
-        set_effect      :: proc {
-            effects__set_archetype,
-            effects__set_meta,
-            effects__set_surface,
-            effects__set_object,
-        }
-        has_effect :: effects__has
-
-        // the authored bits, indexed the way your own Flags_Table is
-        bits_of :: proc {
-            state_flags__bits_of,
-            effects__bits_of,
-        }
+        as_int    :: values__as_int
+        as_float  :: values__as_float
+        as_string :: values__as_string
+        as_bool   :: values__as_bool
 
     //
-    // Bake
+    // Bake: only needed after changing metas or parents in code; load bakes for you
     //
         bake :: config__bake
 
     //
     // Links between designed objects
     //
-        link_init    :: link__init
-        link         :: link__link
-        unlink       :: link__unlink
-        linked       :: link__linked
-        link_data    :: link__link_data
-        first_target :: link__first_target
-        count_out    :: link__count_out
-        count_in     :: link__count_in
-        links_of     :: link__outgoing
-        links_to     :: link__incoming
-        next         :: link__next
-        link_table   :: link__table
+        links_of  :: links__of
+        links_to  :: links__to
+        link_data :: links__data
 
     //
     // Loading
@@ -231,12 +179,10 @@ package ode_dos
         format_error :: load_error__format
         bind_node    :: binder__bind_node
         bind_value   :: binder__bind_value
-        decode_error :: decode_context__error
 
     //
     // Inspect and tooling
     //
-        dump        :: config__dump
-        explain     :: config__explain
-        source_name :: config__source_name
-        cli_run     :: cli__run
+        dump    :: config__dump
+        explain :: config__explain
+        cli_run :: cli__run
