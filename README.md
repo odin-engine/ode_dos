@@ -1,5 +1,5 @@
 ![ODE_DOS banner](img/banner.png)
-# 🗡️ ODE_DOS (BETA)
+# 🗡️ ODE_DOS
 
 A Thief-style **Dark Object System** for Odin: prototype inheritance, mixins (metas), a typed link graph and data-driven authoring in [KDL](https://kdl.dev), built on [ODE_KDL](https://github.com/odin-engine/ode_kdl).
 
