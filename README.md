@@ -26,8 +26,6 @@ Improvements over the original Thief-style **Dark Object System**:
 
 2. ODE_DOS has a clear distinction between configuration (what designers define) and runtime state (what is happening in the game during playtime). ODE_DOS answers *"what is this thing?"*; your runtime answers *"what do all these things do this frame?"*. Inheritance is flattened once by `bake`, so a game reads configuration with O(1) lookups.
 
-> NOTE: The project is in beta. Everything has been tested and is working, but it will be polished over the coming months.
-
 ## Features
 - No declarations: load a folder of KDL and read whatever the designers wrote, by name.
 - `file:line:column` diagnostics, and hot reload that tells you which objects changed.
